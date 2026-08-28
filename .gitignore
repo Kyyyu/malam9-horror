@@ -1,0 +1,9 @@
+# .godot/
+.godot/
+
+# build output
+build/
+
+# godot cache
+*.import.cache
+*.idsig
