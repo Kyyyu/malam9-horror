@@ -7,6 +7,7 @@ signal exit_requested
 
 const TILE := 2.0
 const WALL_H := 3.2
+const DIRS4: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
 
 const MAP := [
 	"#################",
@@ -168,7 +169,7 @@ func _build_furniture(open_cells: Array[Vector2i]):
 	var candidates: Array[Vector2i] = []
 	for c in open_cells:
 		var nc := _wall_neighbors(c, open_cells)
-		if nc >= 2 and not _is_special(c):
+		if nc >= 2 and not _is_special(c) and not _is_adjacent_special(c):
 			candidates.append(c)
 	candidates.shuffle()
 	var count := mini(candidates.size(), 12)
@@ -198,6 +199,14 @@ func _is_special(c: Vector2i) -> bool:
 	for k in [[13, 3], [9, 7], [13, 9]]:
 		if Vector2i(k[0], k[1]) == c:
 			return true
+	return false
+
+func _is_adjacent_special(c: Vector2i) -> bool:
+	for off in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		var n: Vector2i = c + off
+		if n.x >= 0 and n.y >= 0 and n.y < MAP.size() and n.x < MAP[n.y].length():
+			if _is_special(n):
+				return true
 	return false
 
 func _wall_neighbors(c: Vector2i, open_cells: Array[Vector2i]) -> int:
@@ -400,10 +409,12 @@ func _build_hud():
 
 	var root := Control.new()
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(root)
 
 	objective = Label.new()
 	objective.text = "Cari kunci: 0/%d" % keys_total
+	objective.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	objective.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	objective.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	objective.offset_top = 24
@@ -415,6 +426,7 @@ func _build_hud():
 
 	key_label = Label.new()
 	key_label.text = "Kunci: 0/%d" % keys_total
+	key_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	key_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	key_label.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	key_label.offset_top = 66
@@ -423,6 +435,7 @@ func _build_hud():
 	root.add_child(key_label)
 
 	hint = Label.new()
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hint.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	hint.offset_bottom = -60
 	hint.offset_top = -110
@@ -463,6 +476,7 @@ func _build_hud():
 
 	vignette = TextureRect.new()
 	vignette.set_anchors_preset(Control.PRESET_FULL_RECT)
+	vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vignette.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	var gd := Gradient.new()
 	gd.set_color(0, Color(0, 0, 0, 0))
