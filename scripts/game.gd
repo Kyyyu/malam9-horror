@@ -172,23 +172,33 @@ func _build_furniture(open_cells: Array[Vector2i]):
 		if nc >= 2 and not _is_special(c) and not _is_adjacent_special(c):
 			candidates.append(c)
 	candidates.shuffle()
-	var count := mini(candidates.size(), 12)
+	var count := mini(candidates.size(), 10)
 	var box_mat := _get_mat("box", Color(0.13, 0.1, 0.09), Color(0, 0, 0), 1.0)
 	var wood_mat := _get_mat("wood", Color(0.22, 0.16, 0.1), Color(0, 0, 0), 1.0)
 	for i in range(count):
 		var c := candidates[i]
-		var pos := Vector3(c.x * TILE + 1.0, 0.0, c.y * TILE + 1.0)
-		var r := rng.randf_range(0.0, TAU)
 		var which := i % 3
-		if which == 0:
-			var b := _add_static_box(pos + Vector3(0, 0.45, 0), Vector3(0.9, 0.9, 0.9), box_mat)
-			b.rotation.y = r
-		elif which == 1:
-			var b := _add_static_box(pos + Vector3(0, 0.6, 0), Vector3(1.4, 1.2, 0.8), wood_mat)
-			b.rotation.y = r
-		else:
-			var b := _add_static_box(pos + Vector3(0, 1.0, 0), Vector3(0.7, 2.0, 0.7), box_mat)
-			b.rotation.y = r
+		var size: Vector3
+		var mat: Material
+		match which:
+			0:
+				size = Vector3(0.8, 0.8, 0.8)
+				mat = box_mat
+			1:
+				size = Vector3(1.2, 1.0, 0.6)
+				mat = wood_mat
+			_:
+				size = Vector3(0.6, 1.6, 0.6)
+				mat = box_mat
+		var push := _wall_push_dir(c, open_cells)
+		var pos := Vector3(c.x * TILE + 1.0 + push.x * (TILE * 0.5 - size.x * 0.5), size.y * 0.5, c.y * TILE + 1.0 + push.z * (TILE * 0.5 - size.z * 0.5))
+		_add_static_box(pos, size, mat)
+
+func _wall_push_dir(c: Vector2i, open_cells: Array[Vector2i]) -> Vector3:
+	for off in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		if not open_cells.has(c + off):
+			return Vector3(off.x, 0, off.y)
+	return Vector3.ZERO
 
 func _is_special(c: Vector2i) -> bool:
 	if MAP[c.y][c.x] in ['P', 'K', 'E']:

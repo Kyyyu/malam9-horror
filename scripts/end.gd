@@ -30,6 +30,7 @@ func _ready():
 	else:
 		title.text = "TERTANGKAP HANTU..."
 		title.add_theme_color_override("font_color", Color(1, 0.25, 0.25))
+	title.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 60)
 	vbox.add_child(title)
@@ -39,6 +40,8 @@ func _ready():
 		msg.text = "Kamu berhasil lolos dari rumah itu sebelum jam 12 malam.\nBersih... untuk sekarang."
 	else:
 		msg.text = "Hantu itu tidak akan membiarkanmu pergi.\nMalam 9, kamu tidak selamat."
+	msg.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	msg.custom_minimum_size = Vector2(520, 0)
 	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	msg.add_theme_font_size_override("font_size", 26)
@@ -51,6 +54,7 @@ func _ready():
 
 	var retry := Button.new()
 	retry.text = "COBA LAGI"
+	retry.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	retry.custom_minimum_size = Vector2(320, 88)
 	retry.add_theme_font_size_override("font_size", 40)
 	retry.pressed.connect(func(): retry_pressed.emit())
@@ -58,6 +62,7 @@ func _ready():
 
 	var back := Button.new()
 	back.text = "MENU UTAMA"
+	back.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	back.custom_minimum_size = Vector2(320, 88)
 	back.add_theme_font_size_override("font_size", 34)
 	back.pressed.connect(func(): menu_pressed.emit())

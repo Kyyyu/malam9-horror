@@ -24,6 +24,7 @@ func _ready():
 
 	var title := Label.new()
 	title.text = "MALAM 9"
+	title.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 88)
 	title.add_theme_color_override("font_color", Color(0.85, 0.88, 1))
@@ -34,6 +35,7 @@ func _ready():
 
 	var sub := Label.new()
 	sub.text = "· H O R O R  3 D ·"
+	sub.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.add_theme_font_size_override("font_size", 30)
 	sub.add_theme_color_override("font_color", Color(0.55, 0.6, 0.75))
@@ -45,6 +47,7 @@ func _ready():
 
 	var start := Button.new()
 	start.text = "MULAI"
+	start.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	start.custom_minimum_size = Vector2(320, 96)
 	start.add_theme_font_size_override("font_size", 44)
 	start.pressed.connect(func(): started.emit())
@@ -55,6 +58,8 @@ func _ready():
 
 	var hint := Label.new()
 	hint.text = "Temukan 3 kunci lalu kabur sebelum HANTU menangkapmu..."
+	hint.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	hint.custom_minimum_size = Vector2(520, 0)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.add_theme_font_size_override("font_size", 24)
@@ -63,6 +68,8 @@ func _ready():
 
 	var ctrl := Label.new()
 	ctrl.text = "- Gerak: drag kiri / WASD\n- Lihat: drag kanan / gerak mouse\n- Senter: tombol kanan bawah / F"
+	ctrl.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	ctrl.custom_minimum_size = Vector2(520, 0)
 	ctrl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ctrl.add_theme_font_size_override("font_size", 22)
 	ctrl.add_theme_color_override("font_color", Color(0.45, 0.42, 0.5))
