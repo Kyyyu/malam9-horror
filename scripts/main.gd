@@ -9,11 +9,19 @@ func _ready():
 
 func _setup_music():
 	music = AudioStreamPlayer.new()
-	var s := load("res://audio/music_loop.wav") as AudioStreamWAV
-	if s:
-		s.loop_mode = AudioStreamWAV.LOOP_FORWARD
-		music.stream = s
-		music.volume_db = -11.0
+	var stream: AudioStream = null
+	for cand in ["res://audio/bersenja_gurau.mp3", "res://audio/bersenja_gurau.ogg", "res://audio/bersenja_gurau.wav"]:
+		if ResourceLoader.exists(cand):
+			stream = load(cand)
+			break
+	if stream == null:
+		var wav := load("res://audio/music_loop.wav") as AudioStreamWAV
+		if wav:
+			wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+			stream = wav
+	if stream:
+		music.stream = stream
+		music.volume_db = -8.0
 		add_child(music)
 		music.play()
 

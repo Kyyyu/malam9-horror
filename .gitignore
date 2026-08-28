@@ -6,4 +6,6 @@ build/
 
 # godot cache
 *.import.cache
-*.idsig
+
+# user-provided copyrighted music (not committed)
+audio/bersenja_gurau.*

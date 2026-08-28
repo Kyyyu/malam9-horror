@@ -43,6 +43,7 @@ var jumped := false
 var objective: Label = null
 var key_label: Label = null
 var hint: Label = null
+var key_hint: Label = null
 var vignette: TextureRect = null
 var joystick: JoystickControl = null
 
@@ -51,6 +52,8 @@ var heartbeat: AudioStreamPlayer
 var whisper: AudioStreamPlayer
 var _step_timer := 0.0
 var _loaded := false
+var _near_key_t := 0.0
+var _key_pinged := {}
 
 var _mats := {}
 
@@ -576,19 +579,46 @@ func _build_keys():
 		ks.radius = 0.6
 		kcs.shape = ks
 		key.add_child(kcs)
-		var gmat := _get_mat("key", Color(1.0, 0.85, 0.2, 1), Color(1.0, 0.7, 0.1, 1), 3.0)
+		var gmat := _get_mat("key", Color(1.0, 0.85, 0.2, 1), Color(1.0, 0.75, 0.15, 1), 6.0)
 		var mi := MeshInstance3D.new()
 		var sm := SphereMesh.new()
-		sm.radius = 0.22
-		sm.height = 0.44
+		sm.radius = 0.34
+		sm.height = 0.68
 		mi.mesh = sm
 		mi.material_override = gmat
 		key.add_child(mi)
 		var kl := OmniLight3D.new()
-		kl.light_energy = 1.6
-		kl.light_color = Color(1.0, 0.8, 0.3)
-		kl.omni_range = 4.0
+		kl.light_energy = 3.5
+		kl.light_color = Color(1.0, 0.82, 0.3)
+		kl.omni_range = 7.0
 		key.add_child(kl)
+		var beam_mat := _get_mat("key_beam", Color(1.0, 0.9, 0.3, 0.6), Color(1.0, 0.8, 0.25, 1), 4.0)
+		beam_mat.transparency = StandardMaterial3D.TRANSPARENCY_ALPHA
+		beam_mat.unshaded = true
+		var beam := MeshInstance3D.new()
+		var bm2 := CylinderMesh.new()
+		bm2.top_radius = 0.04
+		bm2.bottom_radius = 0.09
+		bm2.height = 6.0
+		beam.mesh = bm2
+		beam.material_override = beam_mat
+		beam.position.y = 3.4
+		key.add_child(beam)
+		var sp := CPUParticles3D.new()
+		sp.amount = 26
+		sp.lifetime = 1.8
+		sp.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+		sp.emission_sphere_radius = 0.1
+		sp.position.y = 1.0
+		sp.direction = Vector3(0, 1, 0)
+		sp.spread = 180.0
+		sp.gravity = Vector3(0, 0.4, 0)
+		sp.initial_velocity_min = 0.2
+		sp.initial_velocity_max = 0.8
+		sp.scale_amount_min = 0.03
+		sp.scale_amount_max = 0.06
+		sp.color = Color(1, 0.9, 0.4, 0.9)
+		key.add_child(sp)
 		key.position = pos
 		add_child(key)
 		all_keys.append(key)
@@ -725,6 +755,22 @@ func _build_hud():
 	quit_btn.pressed.connect(func(): exit_requested.emit())
 	root.add_child(quit_btn)
 
+	key_hint = Label.new()
+	key_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	key_hint.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	key_hint.offset_top = 90
+	key_hint.offset_bottom = 150
+	key_hint.offset_left = -300
+	key_hint.offset_right = 300
+	key_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	key_hint.add_theme_font_size_override("font_size", 30)
+	key_hint.add_theme_color_override("font_color", Color(1.0, 0.88, 0.45))
+	key_hint.add_theme_color_override("font_shadow_color", Color(0.2, 0.12, 0, 0.8))
+	key_hint.add_theme_constant_override("shadow_offset_x", 2)
+	key_hint.add_theme_constant_override("shadow_offset_y", 2)
+	key_hint.modulate.a = 0.0
+	root.add_child(key_hint)
+
 	vignette = TextureRect.new()
 	vignette.set_anchors_preset(Control.PRESET_FULL_RECT)
 	vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -782,6 +828,32 @@ func _process(delta: float):
 	if is_instance_valid(ghost) and is_instance_valid(player):
 		if ghost.global_position.distance_to(player.global_position) < 4.0:
 			_shake_camera()
+	_check_key_hint(delta)
+
+func _check_key_hint(delta: float):
+	if not player or not is_instance_valid(player):
+		return
+	var best := INF
+	var best_key: Node3D = null
+	for k in all_keys:
+		if is_instance_valid(k):
+			var d: float = k.global_position.distance_to(player.global_position)
+			if d < best:
+				best = d
+				best_key = k
+	if best_key == null:
+		return
+	if best < 7.0:
+		if not _key_pinged.has(best_key.get_instance_id()):
+			_key_pinged[best_key.get_instance_id()] = true
+			_play_once("res://audio/pickup.wav", -15.0, 1.4)
+		_near_key_t = minf(_near_key_t + delta * 2.0, 1.0)
+		var pulse := 0.65 + 0.35 * sin(Time.get_ticks_msec() * 0.006)
+		key_hint.text = "Kunci keemasan ada di dekat sini!"
+		key_hint.modulate.a = _near_key_t * pulse
+	else:
+		_near_key_t = maxf(_near_key_t - delta, 0.0)
+		key_hint.modulate.a = _near_key_t
 
 func _moving() -> bool:
 	if not player:
