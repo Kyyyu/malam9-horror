@@ -15,6 +15,11 @@ func _setup_music():
 			stream = load(cand)
 			break
 	if stream == null:
+		var gurau := load("res://audio/musik_gurau.wav") as AudioStreamWAV
+		if gurau:
+			gurau.loop_mode = AudioStreamWAV.LOOP_FORWARD
+			stream = gurau
+	if stream == null:
 		var wav := load("res://audio/music_loop.wav") as AudioStreamWAV
 		if wav:
 			wav.loop_mode = AudioStreamWAV.LOOP_FORWARD

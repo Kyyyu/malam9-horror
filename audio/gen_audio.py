@@ -137,6 +137,83 @@ tt = np.arange(n) / SR
 clk = np.sin(2 * np.pi * 1300 * tt) * np.exp(-tt * 60) + 0.6 * np.sin(2 * np.pi * 1900 * tt) * np.exp(-tt * 90)
 write("click.wav", clk * 0.8)
 
+# musik gurau: original melancholic 6/8 ballad (inspired by "Bersenja Gurau")
+eighth = 0.5
+n = int(SR * 24.0)
+music = np.zeros(n)
+rngm = np.random.default_rng(77)
+
+def add_tone(buf, at, freq, dur, amp, decay=3.0, bright=0.35):
+    s = max(0, int(at * SR))
+    d = int(dur * SR)
+    if s + d > len(buf):
+        d = len(buf) - s
+    if d <= 0:
+        return
+    seg = np.arange(d) / SR
+    base = np.sin(2 * np.pi * freq * seg + rngm.uniform(0, 6.28))
+    harm = bright * (0.4 * np.sin(2 * np.pi * freq * 2 * seg) + 0.15 * np.sin(2 * np.pi * freq * 3 * seg))
+    vib = 1.0 + 0.007 * np.sin(2 * np.pi * 4.5 * seg + rngm.uniform(0, 6.28))
+    env = np.exp(-seg * decay)
+    buf[s:s + d] += (base * vib + harm) * env * amp
+
+def add_bass(buf, at, freq, dur, amp):
+    s = max(0, int(at * SR))
+    d = int(dur * SR)
+    if s + d > len(buf):
+        d = len(buf) - s
+    if d <= 0:
+        return
+    seg = np.arange(d) / SR
+    t = np.sin(2 * np.pi * freq * seg) + 0.3 * np.sin(2 * np.pi * freq * 2 * seg)
+    env = np.minimum(seg / 0.3, 1.0) * np.exp(-seg * 0.7)
+    buf[s:s + d] += t * env * amp
+
+# Dm - Bb - F - C
+prog = [
+    [73.42, 87.31, 110.0, 146.83],
+    [58.27, 69.30, 87.31, 116.54],
+    [87.31, 110.0, 130.81, 174.61],
+    [65.41, 82.41, 98.0, 130.81],
+]
+melody = [
+    (0, 2, 587.33, 1.2), (0, 5, 440.0, 1.0), (0, 8, 349.23, 1.0), (0, 11, 293.66, 1.8),
+    (1, 1, 587.33, 1.2), (1, 4, 466.16, 1.0), (1, 7, 392.0, 1.0), (1, 10, 293.66, 1.8),
+    (2, 2, 523.25, 1.2), (2, 5, 440.0, 1.0), (2, 8, 349.23, 1.2), (2, 10, 261.63, 2.0),
+    (3, 1, 523.25, 1.2), (3, 4, 392.0, 1.0), (3, 7, 329.63, 1.0), (3, 11, 261.63, 2.2),
+]
+for ci, chord in enumerate(prog):
+    base = ci * 6.0
+    for i in range(12):
+        at = base + i * eighth
+        arp = chord[(i * 2) % 4]
+        amp = 0.2 if i % 3 == 0 else 0.13
+        add_tone(music, at, arp, 0.7, amp, decay=2.6, bright=0.18)
+    add_bass(music, base, chord[0], 2.6, 0.5)
+    add_bass(music, base + 3.0, chord[1], 2.2, 0.3)
+    # soft pad
+    s0 = int(base * SR)
+    seg = np.arange(int(6.0 * SR)) / SR
+    env2 = np.minimum(seg / 0.7, 1.0) * np.exp(-np.maximum(seg - 4.2, 0) * 0.8)
+    for f in [chord[1] * 2, chord[2] * 2, chord[3]]:
+        pad = np.sin(2 * np.pi * f * seg + rngm.uniform(0, 6.28))
+        pad += 0.5 * np.sin(2 * np.pi * f * 1.004 * seg + rngm.uniform(0, 6.28))
+        music[s0:s0 + len(seg)] += pad * env2 * 0.05
+for plan in melody:
+    ci, slot, f, dur = plan
+    add_tone(music, ci * 6.0 + slot * eighth, f, dur, 0.3, decay=1.7, bright=0.5)
+
+air = np.convolve(rngm.uniform(-1, 1, n), np.ones(500) / 500, mode="same")
+music += air * 0.014
+
+fadd = int(1.2 * SR)
+fade = np.ones(n)
+fade[:fadd] = np.linspace(0, 1, fadd)
+fade[-fadd:] = np.linspace(1, 0, fadd)
+music *= fade
+music = music / (np.max(np.abs(music)) + 1e-9) * 0.45
+write("musik_gurau.wav", music)
+
 # win / resolve
 n = int(1.5 * SR)
 tt = np.arange(n) / SR
