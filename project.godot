@@ -10,7 +10,7 @@ config/name="Malam 9 - Horor"
 run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.4", "Mobile")
 config/icon="res://icon.svg"
-config/version="1.0.4"
+config/version="1.0.5"
 
 [display]
 

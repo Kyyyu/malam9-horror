@@ -112,6 +112,9 @@ func _unhandled_input(event: InputEvent):
 			_look_on = true
 		else:
 			_look_on = false
+	elif event is InputEventKey:
+		if event.pressed and not event.echo and event.keycode == KEY_F:
+			toggle_flashlight()
 	elif event is InputEventScreenTouch:
 		var size := get_viewport().get_visible_rect().size
 		if event.pressed:

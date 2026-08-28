@@ -25,7 +25,7 @@ const MAP := [
 	"##########E.###.#",
 ]
 
-const LAMP_CELLS := [[4, 1], [3, 3], [5, 5], [10, 5], [11, 7], [5, 9], [3, 12], [9, 3], [7, 1], [13, 7], [12, 5], [2, 11]]
+const LAMP_CELLS := [[4, 1], [3, 3], [5, 5], [10, 5], [11, 7], [5, 9], [3, 12], [9, 3], [7, 1], [13, 7], [12, 5], [2, 11], [9, 1], [14, 1], [1, 3], [6, 3], [1, 5], [6, 5], [1, 7], [8, 7], [1, 9], [14, 9], [1, 11], [4, 11], [7, 11], [10, 11]]
 const WHISPER_CELLS := [[8, 3], [11, 5], [3, 7], [2, 9], [6, 11]]
 
 var player: PlayerController = null
@@ -82,13 +82,84 @@ func _get_mat(key: String, color: Color, emissive := Color(0, 0, 0, 1), e_energy
 		_mats[key] = m
 	return _mats[key]
 
+func _procedural_mat(key: String, color: Color, brick := false, planks := false) -> ShaderMaterial:
+	if _mats.has(key):
+		return _mats[key] as ShaderMaterial
+	var sh := Shader.new()
+	sh.code = """shader_type spatial;
+render_mode diffuse_burley, specular_disabled;
+
+uniform vec4 u_tint : source_color = vec4(0.85, 0.8, 0.7, 1.0);
+uniform bool u_brick = false;
+uniform bool u_planks = false;
+uniform float u_bright : hint_range(0.0, 2.0) = 1.0;
+uniform float u_roughness : hint_range(0.0, 1.0) = 0.95;
+
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vnoise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(
+		mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+		mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x),
+		f.y
+	);
+}
+
+void fragment() {
+	vec3 nrm = normalize(NORMAL);
+	vec2 uv;
+	if (abs(nrm.x) > abs(nrm.y) && abs(nrm.x) > abs(nrm.z)) uv = WORLD_POSITION.zy;
+	else if (abs(nrm.y) > abs(nrm.z)) uv = WORLD_POSITION.xz;
+	else uv = WORLD_POSITION.xy;
+
+	float grunge = vnoise(uv * 0.18);
+	float fine = vnoise(uv * 1.4);
+	vec3 col = u_tint.rgb;
+	col *= mix(0.84, 1.12, grunge);
+	col *= mix(0.95, 1.05, fine) * u_bright;
+	col *= 0.96 + 0.08 * hash(floor(WORLD_POSITION.xz * 3.0 + WORLD_POSITION.y * 13.0));
+
+	if (u_planks) {
+		float px = fract(uv.x * 2.4);
+		col *= 0.86 + 0.22 * hash(vec2(floor(uv.x * 2.4), 0.0));
+		col *= smoothstep(0.0, 0.02, min(px, 1.0 - px));
+		float py = fract(uv.y);
+		col *= 0.85 + 0.15 * smoothstep(0.0, 0.02, min(py, 1.0 - py));
+	}
+	if (u_brick) {
+		vec2 br = uv * vec2(1.7, 5.0);
+		float row = floor(br.y);
+		br.x += 0.5 * mod(row, 2.0);
+		vec2 bb = fract(br);
+		float mm = min(bb.x, 1.0 - bb.x);
+		float mh = min(bb.y, 1.0 - bb.y);
+		float mortar = (1.0 - smoothstep(0.0, 0.05, mm)) * 0.6 + (1.0 - smoothstep(0.0, 0.09, mh));
+		mortar = clamp(mortar, 0.0, 1.0);
+		col *= mix(1.0, 0.42, mortar);
+		col *= 0.9 + 0.2 * hash(vec2(floor(br.x + step(0.5, mod(row, 2.0))), row));
+	}
+	ALBEDO = col;
+	ROUGHNESS = u_roughness;
+}"""
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	m.set_shader_parameter("u_tint", color)
+	m.set_shader_parameter("u_brick", brick)
+	m.set_shader_parameter("u_planks", planks)
+	m.set_shader_parameter("u_bright", 1.0)
+	m.set_shader_parameter("u_roughness", 0.95)
+	_mats[key] = m
+	return m
+
 func _build_environment():
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.02, 0.012, 0.04)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.16, 0.15, 0.22)
-	env.ambient_light_energy = 0.55
+	env.ambient_light_color = Color(0.22, 0.21, 0.3)
+	env.ambient_light_energy = 0.7
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.03, 0.03, 0.05)
@@ -100,8 +171,8 @@ func _build_environment():
 
 	var moon := DirectionalLight3D.new()
 	moon.rotation_degrees = Vector3(-45, -35, 0)
-	moon.light_energy = 0.35
-	moon.light_color = Color(0.4, 0.45, 0.7)
+	moon.light_energy = 0.42
+	moon.light_color = Color(0.42, 0.45, 0.7)
 	add_child(moon)
 
 func _add_static_box(path, size: Vector3, mat: Material) -> StaticBody3D:
@@ -122,12 +193,12 @@ func _add_static_box(path, size: Vector3, mat: Material) -> StaticBody3D:
 	return r
 
 func _build_world():
-	var floor_mat := _get_mat("floor", Color(0.17, 0.14, 0.15), Color(0, 0, 0), 1.0)
+	var floor_mat := _procedural_mat("floor_p", Color(0.44, 0.37, 0.3), false, true)
 	_add_static_box(Vector3(17.0, -0.25, 13.0), Vector3(34.0, 0.5, 26.0), floor_mat)
 
 	var wall_mats := [
-		_get_mat("wall1", Color(0.25, 0.2, 0.22), Color(0, 0, 0), 1.0),
-		_get_mat("wall2", Color(0.28, 0.22, 0.2), Color(0, 0, 0), 1.0),
+		_procedural_mat("wall_plaster", Color(0.52, 0.46, 0.43), false, false),
+		_procedural_mat("wall_brick", Color(0.48, 0.33, 0.26), true, false),
 	]
 	var wall_i := 0
 	var open_cells: Array[Vector2i] = []
@@ -149,7 +220,7 @@ func _build_world():
 	_build_ceiling()
 
 func _build_ceiling():
-	var ceil_mat := _get_mat("ceiling", Color(0.2, 0.17, 0.18), Color(0, 0, 0), 1.0)
+	var ceil_mat := _procedural_mat("ceiling_p", Color(0.42, 0.4, 0.4), false, false)
 	_add_static_box(Vector3(17.0, WALL_H + 0.18, 13.0), Vector3(36.0, 0.35, 28.0), ceil_mat)
 	var beam_mat := _get_mat("beam", Color(0.14, 0.11, 0.1), Color(0, 0, 0), 1.0)
 	for bx in range(1, 15):
@@ -176,9 +247,9 @@ func _build_lamps():
 		if MAP[cell.y][cell.x] == '#':
 			continue
 		var light := OmniLight3D.new()
-		light.light_energy = 3.6
-		light.light_color = Color(1.0, 0.8, 0.5)
-		light.omni_range = 11.0
+		light.light_energy = 4.2
+		light.light_color = Color(1.0, 0.82, 0.55)
+		light.omni_range = 12.0
 		light.position = Vector3(cell.x * TILE + 1.0, 2.6, cell.y * TILE + 1.0)
 		add_child(light)
 		var lamp := Lamp.new()
@@ -405,19 +476,19 @@ func _build_player():
 
 	var fl := SpotLight3D.new()
 	fl.name = "Flashlight"
-	fl.spot_range = 30.0
-	fl.spot_angle = deg_to_rad(48.0)
+	fl.spot_range = 32.0
+	fl.spot_angle = deg_to_rad(56.0)
 	fl.spot_attenuation = 0.85
-	fl.light_energy = 12.0
+	fl.light_energy = 16.0
 	fl.light_color = Color(0.95, 0.9, 0.75)
 	fl.shadow_enabled = true
 	fl.position.y = -0.1
 	camera.add_child(fl)
 
 	var fill := OmniLight3D.new()
-	fill.light_energy = 0.7
-	fill.light_color = Color(0.45, 0.45, 0.6)
-	fill.omni_range = 6.0
+	fill.light_energy = 0.9
+	fill.light_color = Color(0.5, 0.5, 0.62)
+	fill.omni_range = 7.0
 	fill.position = Vector3(0, 2.1, 0)
 	fill.shadow_enabled = false
 	player.add_child(fill)
@@ -619,19 +690,28 @@ func _build_hud():
 	root.add_child(hint)
 
 	var fl_btn := Button.new()
-	fl_btn.text = "SENTER"
+	fl_btn.text = "SENTER ON"
 	fl_btn.add_theme_font_size_override("font_size", 26)
-	fl_btn.custom_minimum_size = Vector2(150, 90)
+	fl_btn.custom_minimum_size = Vector2(170, 96)
 	fl_btn.anchor_left = 1.0
 	fl_btn.anchor_top = 1.0
 	fl_btn.anchor_right = 1.0
 	fl_btn.anchor_bottom = 1.0
-	fl_btn.offset_left = -190
-	fl_btn.offset_top = -260
+	fl_btn.offset_left = -210
+	fl_btn.offset_top = -280
 	fl_btn.offset_right = -30
-	fl_btn.offset_bottom = -160
+	fl_btn.offset_bottom = -180
 	fl_btn.pressed.connect(func(): player.toggle_flashlight())
 	root.add_child(fl_btn)
+
+	var update_fl := func(on: bool):
+		fl_btn.text = "SENTER ON" if on else "SENTER OFF"
+		fl_btn.modulate = Color(1, 1, 1, 1) if on else Color(0.55, 0.55, 0.58)
+	player.flashlight_toggled.connect(func(on: bool):
+		update_fl.call(on)
+		_play_once("res://audio/click.wav", -13.0)
+	)
+	update_fl.call(true)
 
 	var quit_btn := Button.new()
 	quit_btn.text = "KELUAR"

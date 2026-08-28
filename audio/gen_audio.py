@@ -131,6 +131,12 @@ music *= fade
 music = music / (np.max(np.abs(music)) + 1e-9) * 0.55
 write("music_loop.wav", music)
 
+# flashlight click
+n = int(0.14 * SR)
+tt = np.arange(n) / SR
+clk = np.sin(2 * np.pi * 1300 * tt) * np.exp(-tt * 60) + 0.6 * np.sin(2 * np.pi * 1900 * tt) * np.exp(-tt * 90)
+write("click.wav", clk * 0.8)
+
 # win / resolve
 n = int(1.5 * SR)
 tt = np.arange(n) / SR
