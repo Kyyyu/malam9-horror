@@ -25,7 +25,7 @@ const MAP := [
 	"##########E.###.#",
 ]
 
-const LAMP_CELLS := [[4, 1], [3, 3], [5, 5], [10, 5], [11, 7], [5, 9], [3, 12], [9, 3]]
+const LAMP_CELLS := [[4, 1], [3, 3], [5, 5], [10, 5], [11, 7], [5, 9], [3, 12], [9, 3], [7, 1], [13, 7], [12, 5], [2, 11]]
 const WHISPER_CELLS := [[8, 3], [11, 5], [3, 7], [2, 9], [6, 11]]
 
 var player: PlayerController = null
@@ -85,14 +85,14 @@ func _get_mat(key: String, color: Color, emissive := Color(0, 0, 0, 1), e_energy
 func _build_environment():
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.01, 0.005, 0.02)
+	env.background_color = Color(0.02, 0.012, 0.04)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.05, 0.05, 0.08)
-	env.ambient_light_energy = 0.4
+	env.ambient_light_color = Color(0.16, 0.15, 0.22)
+	env.ambient_light_energy = 0.55
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.03, 0.03, 0.05)
-	env.fog_density = 0.055
+	env.fog_density = 0.018
 	env.fog_sky_affect = 0.0
 	var we := WorldEnvironment.new()
 	we.environment = env
@@ -100,7 +100,7 @@ func _build_environment():
 
 	var moon := DirectionalLight3D.new()
 	moon.rotation_degrees = Vector3(-45, -35, 0)
-	moon.light_energy = 0.22
+	moon.light_energy = 0.35
 	moon.light_color = Color(0.4, 0.45, 0.7)
 	add_child(moon)
 
@@ -122,12 +122,12 @@ func _add_static_box(path, size: Vector3, mat: Material) -> StaticBody3D:
 	return r
 
 func _build_world():
-	var floor_mat := _get_mat("floor", Color(0.11, 0.09, 0.1), Color(0, 0, 0), 1.0)
+	var floor_mat := _get_mat("floor", Color(0.17, 0.14, 0.15), Color(0, 0, 0), 1.0)
 	_add_static_box(Vector3(17.0, -0.25, 13.0), Vector3(34.0, 0.5, 26.0), floor_mat)
 
 	var wall_mats := [
-		_get_mat("wall1", Color(0.17, 0.13, 0.15), Color(0, 0, 0), 1.0),
-		_get_mat("wall2", Color(0.20, 0.15, 0.14), Color(0, 0, 0), 1.0),
+		_get_mat("wall1", Color(0.25, 0.2, 0.22), Color(0, 0, 0), 1.0),
+		_get_mat("wall2", Color(0.28, 0.22, 0.2), Color(0, 0, 0), 1.0),
 	]
 	var wall_i := 0
 	var open_cells: Array[Vector2i] = []
@@ -153,9 +153,9 @@ func _build_lamps():
 		if MAP[cell.y][cell.x] == '#':
 			continue
 		var light := OmniLight3D.new()
-		light.light_energy = 2.4
-		light.light_color = Color(1.0, 0.75, 0.45)
-		light.omni_range = 10.0
+		light.light_energy = 3.6
+		light.light_color = Color(1.0, 0.8, 0.5)
+		light.omni_range = 11.0
 		light.position = Vector3(cell.x * TILE + 1.0, 2.6, cell.y * TILE + 1.0)
 		add_child(light)
 		var lamp := Lamp.new()
@@ -275,14 +275,22 @@ func _build_player():
 
 	var fl := SpotLight3D.new()
 	fl.name = "Flashlight"
-	fl.spot_range = 24.0
-	fl.spot_angle = deg_to_rad(32.0)
-	fl.spot_attenuation = 1.1
-	fl.light_energy = 3.0
+	fl.spot_range = 30.0
+	fl.spot_angle = deg_to_rad(48.0)
+	fl.spot_attenuation = 0.85
+	fl.light_energy = 12.0
 	fl.light_color = Color(0.95, 0.9, 0.75)
 	fl.shadow_enabled = true
-	fl.position.y = -0.15
+	fl.position.y = -0.1
 	camera.add_child(fl)
+
+	var fill := OmniLight3D.new()
+	fill.light_energy = 0.7
+	fill.light_color = Color(0.45, 0.45, 0.6)
+	fill.omni_range = 6.0
+	fill.position = Vector3(0, 2.1, 0)
+	fill.shadow_enabled = false
+	player.add_child(fill)
 
 	add_child(player)
 	player.collision_layer = 4

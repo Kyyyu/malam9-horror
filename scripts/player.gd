@@ -67,7 +67,8 @@ func _physics_process(delta: float):
 
 	if joystick and _move_on:
 		var jv := joystick.value()
-		input_vec += jv
+		input_vec.x += jv.x
+		input_vec.y += -jv.y
 		input_vec = input_vec.limit_length(1.0)
 
 	var moving := input_vec.length() > 0.05
