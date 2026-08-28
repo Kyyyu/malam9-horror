@@ -146,6 +146,29 @@ func _build_world():
 	_build_lamps()
 	_build_furniture(open_cells)
 	_build_whispers()
+	_build_ceiling()
+
+func _build_ceiling():
+	var ceil_mat := _get_mat("ceiling", Color(0.2, 0.17, 0.18), Color(0, 0, 0), 1.0)
+	_add_static_box(Vector3(17.0, WALL_H + 0.18, 13.0), Vector3(36.0, 0.35, 28.0), ceil_mat)
+	var beam_mat := _get_mat("beam", Color(0.14, 0.11, 0.1), Color(0, 0, 0), 1.0)
+	for bx in range(1, 15):
+		_add_static_box(Vector3(bx * TILE + 1.0, WALL_H - 0.2, 13.0), Vector3(0.18, 0.35, 26.0), beam_mat)
+	var dust := CPUParticles3D.new()
+	dust.amount = 120
+	dust.lifetime = 7.0
+	dust.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	dust.emission_box_extents = Vector3(17, 1.3, 13)
+	dust.position = Vector3(17.0, 1.5, 13.0)
+	dust.direction = Vector3(0, 1, 0)
+	dust.spread = 60.0
+	dust.gravity = Vector3(0.02, -0.02, 0.015)
+	dust.initial_velocity_min = 0.04
+	dust.initial_velocity_max = 0.18
+	dust.scale_amount_min = 0.012
+	dust.scale_amount_max = 0.04
+	dust.color = Color(1, 1, 1, 0.5)
+	add_child(dust)
 
 func _build_lamps():
 	for lam in LAMP_CELLS:
@@ -162,6 +185,17 @@ func _build_lamps():
 		lamp.light = light
 		lamp.base = light.light_energy
 		add_child(lamp)
+		var iron_mat := _get_mat("lamp_iron", Color(0.12, 0.11, 0.12), Color(0, 0, 0), 1.0)
+		var fixture := _add_static_box(Vector3(cell.x * TILE + 1.0, 2.52, cell.y * TILE + 1.0), Vector3(0.6, 0.12, 0.6), iron_mat)
+		var bulb_mat := _get_mat("lamp_bulb", Color(0.9, 0.75, 0.5), Color(1.0, 0.8, 0.5, 1), 2.0)
+		var bulb := MeshInstance3D.new()
+		var bm := SphereMesh.new()
+		bm.radius = 0.14
+		bm.height = 0.28
+		bulb.mesh = bm
+		bulb.material_override = bulb_mat
+		bulb.position = Vector3(cell.x * TILE + 1.0, 2.44, cell.y * TILE + 1.0)
+		add_child(bulb)
 
 func _build_furniture(open_cells: Array[Vector2i]):
 	var rng := RandomNumberGenerator.new()
@@ -172,12 +206,20 @@ func _build_furniture(open_cells: Array[Vector2i]):
 		if nc >= 2 and not _is_special(c) and not _is_adjacent_special(c):
 			candidates.append(c)
 	candidates.shuffle()
-	var count := mini(candidates.size(), 10)
+	var count := mini(candidates.size(), 12)
 	var box_mat := _get_mat("box", Color(0.13, 0.1, 0.09), Color(0, 0, 0), 1.0)
 	var wood_mat := _get_mat("wood", Color(0.22, 0.16, 0.1), Color(0, 0, 0), 1.0)
+	var barrel_mat := _get_mat("barrel", Color(0.3, 0.22, 0.14), Color(0, 0, 0), 1.0)
 	for i in range(count):
 		var c := candidates[i]
-		var which := i % 3
+		var which := i % 4
+		var push := _wall_push_dir(c, open_cells)
+		if which == 3:
+			var r := 0.32
+			var h := 0.72
+			var pos := Vector3(c.x * TILE + 1.0 + push.x * (TILE * 0.5 - r), h * 0.5, c.y * TILE + 1.0 + push.z * (TILE * 0.5 - r))
+			_add_static_cyl(pos, r, h, barrel_mat)
+			continue
 		var size: Vector3
 		var mat: Material
 		match which:
@@ -190,9 +232,29 @@ func _build_furniture(open_cells: Array[Vector2i]):
 			_:
 				size = Vector3(0.6, 1.6, 0.6)
 				mat = box_mat
-		var push := _wall_push_dir(c, open_cells)
 		var pos := Vector3(c.x * TILE + 1.0 + push.x * (TILE * 0.5 - size.x * 0.5), size.y * 0.5, c.y * TILE + 1.0 + push.z * (TILE * 0.5 - size.z * 0.5))
 		_add_static_box(pos, size, mat)
+
+func _add_static_cyl(path: Vector3, radius: float, height: float, mat: Material) -> StaticBody3D:
+	var r := StaticBody3D.new()
+	var mi := MeshInstance3D.new()
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = radius * 0.82
+	mesh.bottom_radius = radius
+	mesh.height = height
+	mesh.radial_segments = 14
+	mi.mesh = mesh
+	mi.material_override = mat
+	r.add_child(mi)
+	var cs := CollisionShape3D.new()
+	var shape := CylinderShape3D.new()
+	shape.radius = radius
+	shape.height = height
+	cs.shape = shape
+	r.add_child(cs)
+	add_child(r)
+	r.global_position = path
+	return r
 
 func _wall_push_dir(c: Vector2i, open_cells: Array[Vector2i]) -> Vector3:
 	for off in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
@@ -226,6 +288,74 @@ func _wall_neighbors(c: Vector2i, open_cells: Array[Vector2i]) -> int:
 			continue
 		count += 1
 	return count
+
+func _cell_center(c: Vector2i) -> Vector3:
+	return Vector3(c.x * TILE + 1.0, 0.0, c.y * TILE + 1.0)
+
+func _cell_of(pos: Vector3) -> Vector2i:
+	return Vector2i(int(floor(pos.x / TILE)), int(floor(pos.z / TILE)))
+
+func _is_floor_cell(c: Vector2i) -> bool:
+	if c.y < 0 or c.y >= MAP.size() or c.x < 0 or c.x >= MAP[c.y].length():
+		return false
+	return MAP[c.y][c.x] != '#'
+
+func _nearest_floor(c: Vector2i) -> Vector2i:
+	if _is_floor_cell(c):
+		return c
+	for r in range(1, 6):
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				var n := Vector2i(c.x + dx, c.y + dy)
+				if _is_floor_cell(n):
+					return n
+	return c
+
+func find_path(from: Vector3, to: Vector3) -> PackedVector3Array:
+	var s := _nearest_floor(_cell_of(from))
+	var g := _nearest_floor(_cell_of(to))
+	if s == g:
+		return PackedVector3Array()
+	var prev := {}
+	var visited := {s: true}
+	var queue: Array[Vector2i] = [s]
+	var guard := 0
+	while queue.size() > 0 and guard < 1200:
+		guard += 1
+		var c: Vector2i = queue.pop_front()
+		if c == g:
+			break
+		for off in DIRS4:
+			var n: Vector2i = c + off
+			if not _is_floor_cell(n) or visited.has(n):
+				continue
+			visited[n] = true
+			prev[n] = c
+			queue.append(n)
+	if not (prev.has(g) or s == g):
+		return PackedVector3Array()
+	var back: Array[Vector2i] = []
+	var cur := g
+	while true:
+		back.append(cur)
+		if cur == s:
+			break
+		cur = prev[cur]
+	var path := PackedVector3Array()
+	for i in range(back.size() - 1, -1, -1):
+		path.append(_cell_center(back[i]))
+	if path.size() > 1:
+		path.remove_at(0)
+	return path
+
+func random_floor_goal(near: Vector3, radius: float) -> Vector3:
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	for tries in range(10):
+		var c := _cell_of(near + Vector3(rng.randf_range(-radius, radius), 0.0, rng.randf_range(-radius, radius)))
+		if _is_floor_cell(c):
+			return _cell_center(c)
+	return _cell_center(_nearest_floor(_cell_of(near)))
 
 func _build_whispers():
 	for cell in WHISPER_CELLS:
@@ -300,6 +430,7 @@ func _build_player():
 func _build_ghost():
 	ghost = GhostController.new()
 	ghost.name = "Ghost"
+	ghost.game = self
 	var gcs := CollisionShape3D.new()
 	var gs := SphereShape3D.new()
 	gs.radius = 0.55
@@ -307,37 +438,55 @@ func _build_ghost():
 	gcs.position.y = 1.3
 	ghost.add_child(gcs)
 
-	var body_mat := _get_mat("ghost_body", Color(0.9, 0.95, 1, 0.85), Color(0.55, 0.75, 1, 1), 1.6)
+	var robe_mat := _get_mat("ghost_body", Color(0.62, 0.68, 0.9, 0.55), Color(0.4, 0.6, 1, 1), 1.2)
+	var skirt := MeshInstance3D.new()
+	var skm := CylinderMesh.new()
+	skm.top_radius = 0.1
+	skm.bottom_radius = 0.62
+	skm.height = 1.3
+	skm.radial_segments = 12
+	skirt.mesh = skm
+	skirt.material_override = robe_mat
+	skirt.position.y = 0.68
+	ghost.add_child(skirt)
+
 	var body := MeshInstance3D.new()
-	var cm := CapsuleMesh.new()
-	cm.radius = 0.42
-	cm.height = 1.5
-	body.mesh = cm
-	body.material_override = body_mat
-	body.position.y = 1.15
+	var bm := CapsuleMesh.new()
+	bm.radius = 0.33
+	bm.height = 0.9
+	body.mesh = bm
+	body.material_override = robe_mat
+	body.position.y = 1.55
 	ghost.add_child(body)
 
 	var face := MeshInstance3D.new()
 	var sm := SphereMesh.new()
-	sm.radius = 0.42
-	sm.height = 0.86
+	sm.radius = 0.31
+	sm.height = 0.6
 	face.mesh = sm
-	var face_mat := _get_mat("ghost_face", Color(0.92, 0.97, 1, 1), Color(0.5, 0.8, 1, 1), 2.0)
+	var face_mat := _get_mat("ghost_face", Color(0.92, 0.96, 1, 1), Color(0.55, 0.8, 1, 1), 2.6)
 	face.material_override = face_mat
-	face.position.y = 2.0
+	face.position.y = 2.15
 	ghost.add_child(face)
 	ghost.set_face(face)
 
-	var eye_mat := _get_mat("ghost_eye", Color(0, 0, 0, 1), Color(1, 0, 0, 1), 4.0)
-	for ex in [-0.14, 0.14]:
+	var eye_mat := _get_mat("ghost_eye", Color(0, 0, 0, 1), Color(1, 0.05, 0.05, 1), 7.0)
+	for ex in [-0.12, 0.12]:
 		var eye := MeshInstance3D.new()
 		var es := SphereMesh.new()
-		es.radius = 0.05
-		es.height = 0.1
+		es.radius = 0.045
+		es.height = 0.09
 		eye.mesh = es
 		eye.material_override = eye_mat
-		eye.position = Vector3(ex, 2.06, -0.35)
+		eye.position = Vector3(ex, 2.18, -0.28)
 		ghost.add_child(eye)
+
+	var aura := OmniLight3D.new()
+	aura.light_energy = 1.5
+	aura.light_color = Color(1.0, 0.15, 0.12)
+	aura.omni_range = 4.5
+	aura.position.y = 2.1
+	ghost.add_child(aura)
 
 	add_child(ghost)
 	ghost.target = player
@@ -378,6 +527,10 @@ func _build_exit():
 	var pos := Vector3(v.x * TILE + 1.0, 1.6, v.y * TILE + 1.0)
 	var door_mat := _get_mat("door", Color(0.28, 0.16, 0.1), Color(0.3, 0.05, 0.05, 1), 1.0)
 	_add_static_box(pos, Vector3(0.4, 3.2, 2.0), door_mat)
+	var frame_mat := _get_mat("frame", Color(0.24, 0.16, 0.11), Color(0, 0, 0), 1.0)
+	for sx in [-1.6, 1.6]:
+		_add_static_box(pos + Vector3(sx, 1.2, 0.0), Vector3(0.4, 2.9, 0.5), frame_mat)
+	_add_static_box(pos + Vector3(0.0, 2.9, 0.0), Vector3(4.0, 0.35, 0.55), frame_mat)
 
 	exit_area = Area3D.new()
 	exit_area.collision_mask = 4

@@ -89,6 +89,48 @@ tt = np.arange(n) / SR
 chime = np.sin(2 * np.pi * 440 * tt) + 0.6 * np.sin(2 * np.pi * 660 * tt) + 0.3 * np.sin(2 * np.pi * 880 * tt)
 write("pickup.wav", chime * env(tt) * 0.5)
 
+# music loop: eerie ambient (30s, crossfaded tails for seamless looping)
+dur = 30.0
+n = int(SR * dur)
+tt = np.arange(n) / SR
+rng = np.random.default_rng(41)
+music = np.zeros(n)
+base = [73.42, 87.31, 110.0, 146.83]  # D minor drone
+for f in base:
+    music += np.sin(2 * np.pi * f * tt + rng.uniform(0, 6.283))
+    music += 0.5 * np.sin(2 * np.pi * f * 1.004 * tt + rng.uniform(0, 6.283))
+pad_lfo = 0.55 + 0.45 * np.sin(2 * np.pi * 0.05 * tt + 0.7)
+for f in [220.0, 261.63, 311.13]:
+    music += 0.16 * np.sin(2 * np.pi * f * tt + rng.uniform(0, 6.283)) * pad_lfo
+noise_wind = rng.uniform(-1, 1, n)
+noise_wind = np.convolve(noise_wind, np.ones(900) / 900, mode="same")
+music += noise_wind * (0.18 + 0.16 * np.sin(2 * np.pi * 0.03 * tt))
+pluck_freqs = [466.16, 554.37, 587.33, 622.25, 349.23]
+for i in range(10):
+    st = int(rng.uniform(2.0, dur - 2.0) * SR)
+    d = int(1.6 * SR)
+    if st + d > n:
+        continue
+    seg = np.arange(d) / SR
+    f = pluck_freqs[int(rng.integers(0, len(pluck_freqs)))]
+    tone = np.sin(2 * np.pi * f * seg + rng.uniform(0, 6.283))
+    tone += 0.4 * np.sin(2 * np.pi * f * 1.5 * seg)
+    tone *= np.exp(-seg * 1.4)
+    music[st:st + d] += tone
+# danger swell sweeping upward each loop
+sw = int(6.0 * SR)
+swell_tt = np.arange(sw) / SR
+swell = np.sin(2 * np.pi * (70 + 160 * np.linspace(0, 1, sw)) * swell_tt)
+swell *= np.linspace(0, 1, sw) ** 2
+music[n - sw:] += swell * 0.7
+fadd = int(1.2 * SR)
+fade = np.ones(n)
+fade[:fadd] = np.linspace(0, 1, fadd)
+fade[-fadd:] = np.linspace(1, 0, fadd)
+music *= fade
+music = music / (np.max(np.abs(music)) + 1e-9) * 0.55
+write("music_loop.wav", music)
+
 # win / resolve
 n = int(1.5 * SR)
 tt = np.arange(n) / SR

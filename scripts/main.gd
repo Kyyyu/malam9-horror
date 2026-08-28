@@ -1,9 +1,21 @@
 extends Node
 
 var screen: Node = null
+var music: AudioStreamPlayer = null
 
 func _ready():
+	_setup_music()
 	_show_menu()
+
+func _setup_music():
+	music = AudioStreamPlayer.new()
+	var s := load("res://audio/music_loop.wav") as AudioStreamWAV
+	if s:
+		s.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		music.stream = s
+		music.volume_db = -11.0
+		add_child(music)
+		music.play()
 
 func _clear():
 	if screen:
