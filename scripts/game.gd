@@ -73,6 +73,10 @@ var pause_overlay: CanvasLayer = null
 var scare_overlay: CanvasLayer = null
 var ghost_label: Label = null
 var compass: Control = null
+var net_flag := false
+var net_is_host_role := false
+var net_manager: Node = null
+var _net_ended := false
 var _vib_cooldown := 0.0
 var _minimap_t := 0.0
 
@@ -100,6 +104,20 @@ func _ready():
 
 	ghost.danger_changed.connect(_on_danger)
 	ghost.caught.connect(_on_caught)
+
+	if net_flag:
+		if net_is_host_role:
+			if player:
+				player.walk_speed = 4.4
+				player.run_speed = 4.4
+				if player.flashlight:
+					player.flashlight.visible = false
+			ghost_label.text = ghost_name
+		net_manager = preload("res://scripts/net_manager.gd").new()
+		net_manager.name = "NetManager"
+		net_manager.game = self
+		add_child(net_manager)
+		return
 
 	var delay := 6.5 if level >= 2 else 8.0
 	await get_tree().create_timer(delay).timeout
@@ -690,11 +708,14 @@ func _build_ghost():
 	ghost.visible = true
 
 func _build_keys():
+	var idx := 0
 	for cell in _key_cells():
 		var v := Vector2i(cell[0], cell[1])
 		var pos := Vector3(v.x * TILE + 1.0, 1.0, v.y * TILE + 1.0)
 		var key := KeyPickup.new()
 		key.game = self
+		key.key_idx = idx
+		idx += 1
 		var kcs := CollisionShape3D.new()
 		var ks := SphereShape3D.new()
 		ks.radius = 0.6
@@ -775,7 +796,11 @@ func _build_exit():
 func _on_exit_entered(body: Node3D):
 	if body == player and running:
 		if keys_found >= keys_total:
-			_win()
+			if net_flag:
+				if net_manager:
+					net_manager.on_exit_enter_local()
+			else:
+				_win()
 		else:
 			hint.text = "TERKUNCI! Cari kunci lain (%d/%d)" % [keys_found, keys_total]
 			hint.modulate.a = 1.0
@@ -794,6 +819,66 @@ func collected_key():
 		_play_once("res://audio/door_slam.wav", -4.0, 0.8)
 	else:
 		objective.text = "Cari kunci: %d/%d" % [keys_found, keys_total]
+
+func update_objective_net():
+	if not key_label:
+		return
+	key_label.text = "Kunci: %d/%d" % [keys_found, keys_total]
+	if keys_found >= keys_total:
+		objective.text = "PINTU TERBUKA! LARI KE PINTU KELUAR!"
+		if door_light:
+			door_light.light_energy = 3.0
+			door_light.light_color = Color(0.3, 1.0, 0.4)
+		_play_once("res://audio/door_slam.wav", -4.0, 0.8)
+	else:
+		objective.text = "Cari kunci: %d/%d" % [keys_found, keys_total]
+
+func register_key_net(i: int):
+	if i >= 0 and i < all_keys.size() and is_instance_valid(all_keys[i]):
+		all_keys[i].queue_free()
+
+func on_net_caught():
+	if not running:
+		return
+	running = false
+	player.set_control(false)
+	if _is_on_android():
+		Input.vibrate_handheld(700)
+	if music:
+		var m: AudioStreamPlayer = music
+		m.volume_db = -26.0
+	_play_once("res://audio/jumpscare.wav", -2.0)
+	_build_jumpscare()
+	if camera:
+		var tw := create_tween()
+		tw.tween_property(camera, "rotation:z", 0.12, 0.04).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(camera, "rotation:z", -0.12, 0.05)
+		tw.tween_property(camera, "rotation:z", 0.0, 0.05)
+		tw.set_loops(5)
+
+func on_net_end(win: int):
+	if _net_ended:
+		return
+	_net_ended = true
+	running = false
+	player.set_control(false)
+	if music:
+		var m: AudioStreamPlayer = music
+		m.volume_db = 0.0
+	hint.text = "HANTU MENANG!" if win == 0 else "MANUSIA MENANG!"
+	hint.modulate.a = 1.0
+	await get_tree().create_timer(1.8).timeout
+	if not is_instance_valid(self):
+		return
+	if camera:
+		camera.rotation.z = 0.0
+	var local_win := (win == 1) != net_is_host_role
+	ended.emit(local_win)
+
+func on_net_end_relay():
+	if _net_ended:
+		return
+	on_net_end(1)
 
 func _build_hud():
 	var layer := CanvasLayer.new()
@@ -1182,6 +1267,7 @@ class Lamp extends Node:
 
 class KeyPickup extends Area3D:
 	var game: GameScreen
+	var key_idx := 0
 	var t := 0.0
 	func _ready():
 		monitoring = true
@@ -1189,7 +1275,11 @@ class KeyPickup extends Area3D:
 		collision_mask = 4
 		body_entered.connect(func(body):
 			if body == game.player and game.running:
-				game.collected_key()
+				if game.net_flag:
+					if game.net_manager:
+						game.net_manager.on_key_pick_local(key_idx)
+				else:
+					game.collected_key()
 				queue_free())
 	func _physics_process(delta: float):
 		t += delta

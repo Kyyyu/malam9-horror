@@ -46,6 +46,38 @@ func _show_menu():
 	m.started.connect(func(lv: int):
 		_level = lv
 		_start_game())
+	m.lobby_requested.connect(_show_lobby)
+
+func _show_lobby():
+	_clear()
+	Net.cleanup()
+	var l: LobbyScreen = LobbyScreen.new()
+	add_child(l)
+	screen = l
+	l.back_pressed.connect(func():
+		Net.cleanup()
+		_show_menu())
+	l.host_begin.connect(func():
+		_start_net_game(true))
+	l.client_begin.connect(func():
+		_start_net_game(false))
+
+func _start_net_game(as_host: bool):
+	_clear()
+	var g: GameScreen = GameScreen.new()
+	g.level = 1
+	g.net_flag = true
+	g.net_is_host_role = as_host
+	g.music = music
+	add_child(g)
+	screen = g
+	g.ended.connect(_on_game_ended)
+	g.exit_requested.connect(_back_to_menu_net)
+	g.restart_requested.connect(_back_to_menu_net)
+
+func _back_to_menu_net():
+	Net.cleanup()
+	_show_menu()
 
 func _start_game():
 	_clear()
@@ -59,6 +91,10 @@ func _start_game():
 	g.restart_requested.connect(_start_game)
 
 func _on_game_ended(is_win: bool):
+	if screen and screen.has_node("NetManager"):
+		Net.cleanup()
+		_show_menu()
+		return
 	_clear()
 	var e: EndScreen = EndScreen.new()
 	e.set_result(is_win)

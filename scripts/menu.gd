@@ -2,6 +2,7 @@ extends Control
 class_name MenuScreen
 
 signal started(level: int)
+signal lobby_requested
 
 func _ready():
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -76,6 +77,25 @@ func _ready():
 	hint.add_theme_font_size_override("font_size", 24)
 	hint.add_theme_color_override("font_color", Color(0.65, 0.6, 0.7))
 	vbox.add_child(hint)
+
+	var mabar := Button.new()
+	mabar.text = "MABAR (LAN)"
+	mabar.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	mabar.custom_minimum_size = Vector2(360, 76)
+	mabar.add_theme_font_size_override("font_size", 34)
+	mabar.add_theme_stylebox_override("normal", _style(Color(0.35, 0.3, 0.1, 0.9)))
+	mabar.add_theme_stylebox_override("hover", _style(Color(0.48, 0.42, 0.15, 0.95)))
+	mabar.add_theme_stylebox_override("pressed", _style(Color(0.2, 0.17, 0.06, 1)))
+	mabar.pressed.connect(func(): lobby_requested.emit())
+	vbox.add_child(mabar)
+
+	var ofl := Label.new()
+	ofl.text = "BERTANDING: 1 jadi HANTU · lain jadi MANUSIA · WiFi sama"
+	ofl.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	ofl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ofl.add_theme_font_size_override("font_size", 20)
+	ofl.add_theme_color_override("font_color", Color(0.5, 0.48, 0.3))
+	vbox.add_child(ofl)
 
 	var ctrl := Label.new()
 	ctrl.text = "- Gerak: drag kiri / WASD / stik kiri\n- Lihat: drag kanan / mouse / stik kanan\n- Lari: joystick full / Shift / tombol A\n- Senter: tombol kanan bawah / F / tombol X"
