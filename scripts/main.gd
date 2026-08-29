@@ -28,7 +28,7 @@ func _setup_music():
 			stream = wav
 	if stream:
 		music.stream = stream
-		music.volume_db = -8.0
+		music.volume_db = -4.0
 		add_child(music)
 		music.play()
 

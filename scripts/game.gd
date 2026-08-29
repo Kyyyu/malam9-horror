@@ -72,6 +72,7 @@ var minimap: Control = null
 var pause_overlay: CanvasLayer = null
 var scare_overlay: CanvasLayer = null
 var ghost_label: Label = null
+var compass: Control = null
 var _vib_cooldown := 0.0
 var _minimap_t := 0.0
 
@@ -488,7 +489,7 @@ func random_floor_goal(near: Vector3, radius: float) -> Vector3:
 func _build_whispers():
 	for cell in WHISPER_CELLS:
 		var v := Vector2i(cell[0], cell[1])
-		if level >= 2 or _map()[v.y][v.x] == '#':
+		if _map()[v.y][v.x] == '#':
 			continue
 		var a := Area3D.new()
 		a.collision_mask = 4
@@ -533,19 +534,29 @@ func _build_player():
 
 	var fl := SpotLight3D.new()
 	fl.name = "Flashlight"
-	fl.spot_range = 32.0
-	fl.spot_angle = deg_to_rad(56.0)
-	fl.spot_attenuation = 0.85
-	fl.light_energy = 16.0
-	fl.light_color = Color(0.95, 0.9, 0.75)
+	fl.spot_range = 42.0
+	fl.spot_angle = deg_to_rad(74.0)
+	fl.spot_attenuation = 0.42
+	fl.light_energy = 28.0
+	fl.light_color = Color(0.98, 0.94, 0.8)
 	fl.shadow_enabled = true
 	fl.position.y = -0.1
 	camera.add_child(fl)
 
+	var halo := SpotLight3D.new()
+	halo.spot_range = 32.0
+	halo.spot_angle = deg_to_rad(108.0)
+	halo.spot_attenuation = 0.6
+	halo.light_energy = 8.0
+	halo.light_color = Color(0.72, 0.72, 0.85)
+	halo.shadow_enabled = false
+	halo.position.y = -0.05
+	camera.add_child(halo)
+
 	var fill := OmniLight3D.new()
-	fill.light_energy = 0.9
-	fill.light_color = Color(0.5, 0.5, 0.62)
-	fill.omni_range = 7.0
+	fill.light_energy = 1.4
+	fill.light_color = Color(0.55, 0.55, 0.65)
+	fill.omni_range = 10.0
 	fill.position = Vector3(0, 2.1, 0)
 	fill.shadow_enabled = false
 	player.add_child(fill)
@@ -698,36 +709,36 @@ func _build_keys():
 		mi.material_override = gmat
 		key.add_child(mi)
 		var kl := OmniLight3D.new()
-		kl.light_energy = 3.5
-		kl.light_color = Color(1.0, 0.82, 0.3)
-		kl.omni_range = 7.0
+		kl.light_energy = 5.0
+		kl.light_color = Color(1.0, 0.9, 0.45)
+		kl.omni_range = 11.0
 		key.add_child(kl)
 		var beam_mat := _get_mat("key_beam", Color(1.0, 0.9, 0.3, 0.6), Color(1.0, 0.8, 0.25, 1), 4.0)
 		beam_mat.transparency = StandardMaterial3D.TRANSPARENCY_ALPHA
 		beam_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		var beam := MeshInstance3D.new()
 		var bm2 := CylinderMesh.new()
-		bm2.top_radius = 0.04
-		bm2.bottom_radius = 0.09
-		bm2.height = 6.0
+		bm2.top_radius = 0.05
+		bm2.bottom_radius = 0.2
+		bm2.height = 16.0
 		beam.mesh = bm2
 		beam.material_override = beam_mat
-		beam.position.y = 3.4
+		beam.position.y = 8.0
 		key.add_child(beam)
 		var sp := CPUParticles3D.new()
-		sp.amount = 26
+		sp.amount = 40
 		sp.lifetime = 1.8
 		sp.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-		sp.emission_sphere_radius = 0.1
+		sp.emission_sphere_radius = 0.15
 		sp.position.y = 1.0
 		sp.direction = Vector3(0, 1, 0)
 		sp.spread = 180.0
 		sp.gravity = Vector3(0, 0.4, 0)
 		sp.initial_velocity_min = 0.2
-		sp.initial_velocity_max = 0.8
-		sp.scale_amount_min = 0.03
-		sp.scale_amount_max = 0.06
-		sp.color = Color(1, 0.9, 0.4, 0.9)
+		sp.initial_velocity_max = 0.9
+		sp.scale_amount_min = 0.04
+		sp.scale_amount_max = 0.08
+		sp.color = Color(1, 0.92, 0.5, 0.95)
 		key.add_child(sp)
 		key.position = pos
 		add_child(key)
@@ -961,6 +972,12 @@ func _build_hud():
 	minimap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(minimap)
 
+	compass = KeyCompass.new()
+	compass.name = "KeyCompass"
+	compass.set_anchors_preset(Control.PRESET_FULL_RECT)
+	compass.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(compass)
+
 	pause_overlay = PauseOverlay.new()
 	pause_overlay.host = self
 	add_child(pause_overlay)
@@ -1036,18 +1053,35 @@ func _check_key_hint(delta: float):
 				best = d
 				best_key = k
 	if best_key == null:
+		if compass:
+			compass.set_target(Vector2.ONE * -1.0, 0.0)
 		return
-	if best < 7.0:
+	_update_compass(best_key)
+	if best < 13.0:
 		if not _key_pinged.has(best_key.get_instance_id()):
 			_key_pinged[best_key.get_instance_id()] = true
 			_play_once("res://audio/pickup.wav", -15.0, 1.4)
 		_near_key_t = minf(_near_key_t + delta * 2.0, 1.0)
 		var pulse := 0.65 + 0.35 * sin(Time.get_ticks_msec() * 0.006)
-		key_hint.text = "Kunci keemasan ada di dekat sini!"
+		key_hint.text = "KUNCI EMAS DEKAT! %.0fm" % best
 		key_hint.modulate.a = _near_key_t * pulse
 	else:
 		_near_key_t = maxf(_near_key_t - delta, 0.0)
 		key_hint.modulate.a = _near_key_t
+
+func _update_compass(key: Node3D):
+	if not compass or not camera:
+		return
+	var cp := camera.global_transform.affine_inverse() * key.global_position
+	var dist := key.global_position.distance_to(player.global_position)
+	if cp.z > 0.05:
+		var sp := camera.unproject_position(key.global_position)
+		compass.set_target(sp, dist)
+	else:
+		var dir := Vector2(cp.x, cp.y).normalized()
+		if dir.length() < 0.01:
+			dir = Vector2(0, -1)
+		compass.set_target(dir * 40000.0, dist)
 
 func _moving() -> bool:
 	if not player:
@@ -1090,7 +1124,7 @@ func _on_caught():
 		m.volume_db = -26.0
 		await get_tree().create_timer(1.8).timeout
 		if is_instance_valid(m):
-			m.volume_db = -8.0
+			m.volume_db = -4.0
 	_play_once("res://audio/jumpscare.wav", -2.0)
 	_build_jumpscare()
 	if camera:
@@ -1161,6 +1195,32 @@ class KeyPickup extends Area3D:
 		t += delta
 		rotation.y += delta * 2.0
 		position.y = 1.0 + sin(t * 2.0) * 0.15
+
+class KeyCompass extends Control:
+	var _target := Vector2.ZERO
+	var _dist := 0.0
+	var _has := false
+	func set_target(p: Vector2, d: float):
+		_target = p
+		_dist = d
+		_has = p.x >= -0.5
+		queue_redraw()
+	func _draw():
+		if not _has:
+			return
+		var w := size.x
+		var h := size.y
+		if w <= 0.0 or h <= 0.0:
+			return
+		var ctr := Vector2(w * 0.5, h * 0.5)
+		var pt := _target.clamp(Vector2(40, 60), Vector2(w - 40, h - 60))
+		var ang := atan2(_target.y - ctr.y, _target.x - ctr.x) + PI * 0.5
+		draw_set_transform(pt, ang, Vector2.ONE)
+		var tri := PackedVector2Array([Vector2(0, -18), Vector2(-13, 12), Vector2(13, 12)])
+		draw_colored_polygon(tri, Color(1, 0.83, 0.3, 0.95))
+		draw_polyline(tri, Color(0.4, 0.3, 0.1), 2.0)
+		draw_set_transform(pt, 0.0, Vector2.ONE)
+		draw_string(ThemeDB.fallback_font, Vector2(pt.x - 46, pt.y + 32), "KUNCI %.0fm" % _dist, HORIZONTAL_ALIGNMENT_CENTER, 92, 17, Color(1, 0.9, 0.45, 0.95))
 
 class Minimap extends Control:
 	var game: GameScreen
