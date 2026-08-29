@@ -3,8 +3,11 @@ extends CharacterBody3D
 class_name PlayerController
 
 signal flashlight_toggled(on: bool)
+signal stamina_changed(value: float)
+signal stamina_low_changed(low: bool)
 
 const GRAVITY := 22.0
+const MAX_STAMINA := 100.0
 
 var camera: Camera3D
 var flashlight: SpotLight3D
@@ -13,6 +16,9 @@ var joystick: JoystickControl = null
 var walk_speed := 3.6
 var run_speed := 5.2
 var control_enabled := true
+
+var stamina := 100.0
+var _low_emit := false
 
 var look_speed := 0.0032
 var _pitch := 0.0
@@ -55,15 +61,7 @@ func _physics_process(delta: float):
 		move_and_slide()
 		return
 
-	var input_vec := Vector2.ZERO
-	if Input.is_action_pressed("move_forward"):
-		input_vec.y += 1.0
-	if Input.is_action_pressed("move_back"):
-		input_vec.y -= 1.0
-	if Input.is_action_pressed("move_left"):
-		input_vec.x -= 1.0
-	if Input.is_action_pressed("move_right"):
-		input_vec.x += 1.0
+	var input_vec := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 
 	if joystick and _move_on:
 		var jv := joystick.value()
@@ -71,8 +69,21 @@ func _physics_process(delta: float):
 		input_vec.y += -jv.y
 		input_vec = input_vec.limit_length(1.0)
 
+	var run_pressed := Input.is_action_pressed("run")
+	var want_run := run_pressed or input_vec.length() > 0.9
+	var running := want_run and stamina > 0.5 and input_vec.length() > 0.05
+	if running:
+		stamina = maxf(stamina - 26.0 * delta, 0.0)
+	else:
+		stamina = minf(stamina + 9.0 * delta, MAX_STAMINA)
+	stamina_changed.emit(stamina)
+	var low := stamina < 22.0
+	if low != _low_emit:
+		_low_emit = low
+		stamina_low_changed.emit(low)
+
 	var moving := input_vec.length() > 0.05
-	var speed := run_speed if input_vec.length() > 0.9 else walk_speed
+	var speed := run_speed if running else walk_speed
 	var dir := Vector3.ZERO
 	if moving:
 		var b := global_transform.basis
@@ -86,11 +97,19 @@ func _physics_process(delta: float):
 
 	if camera:
 		if moving and is_on_floor():
-			_bob_time += delta * (1.4 if speed > 4.5 else 1.0)
+			_bob_time += delta * (1.4 if running else 1.0)
 			var bob := sin(_bob_time * TAU) * 0.035 * clampf(input_vec.length(), 0, 1)
 			camera.position.y = _bob_base + bob
 		else:
 			camera.position.y = lerp(camera.position.y, _bob_base, 10.0 * delta)
+
+	if Input.is_action_just_pressed("flashlight_toggle"):
+		toggle_flashlight()
+
+	var lookx := Input.get_axis("look_left", "look_right")
+	var looky := Input.get_axis("look_up", "look_down")
+	if absf(lookx) > 0.05 or absf(looky) > 0.05:
+		_look(Vector2(lookx, looky) * 520.0 * delta)
 
 func _look(rel: Vector2):
 	if not control_enabled:
@@ -112,9 +131,6 @@ func _unhandled_input(event: InputEvent):
 			_look_on = true
 		else:
 			_look_on = false
-	elif event is InputEventKey:
-		if event.pressed and not event.echo and event.keycode == KEY_F:
-			toggle_flashlight()
 	elif event is InputEventScreenTouch:
 		var size := get_viewport().get_visible_rect().size
 		if event.pressed:

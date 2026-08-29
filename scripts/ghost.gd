@@ -98,6 +98,8 @@ func _physics_process(delta: float):
 	danger = lerp(danger, new_danger, 3.0 * delta)
 	danger_changed.emit(danger)
 
+	var hop := absf(sin(_bob * 8.5)) * 0.18
+	global_position.y = lerp(global_position.y, hop, 0.3)
 	rotation.z = sin(_bob * 1.9) * 0.035
 
 func _pick_patrol():

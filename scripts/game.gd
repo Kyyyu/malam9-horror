@@ -25,13 +25,32 @@ const MAP := [
 	"##########E.###.#",
 ]
 
+const MAP2 := [
+	"#################",
+	"#.......#......P#",
+	"#.#####.#.#####.#",
+	"#..K..#.......#.#",
+	"#.###.#####...#.#",
+	"#.#.....#.#...#.#",
+	"#.#.###.#.###.#.#",
+	"#.#.#..K#...#.#.#",
+	"#.#.#####.#.#.#.#",
+	"#.#K#...#...#.#.#",
+	"#.###...###.###.#",
+	"#.#.............#",
+	"#.###.E##########",
+]
+
+const KEY_CELLS_L1 := [[13, 3], [9, 7], [13, 9]]
+const KEY_CELLS_L2 := [[3, 3], [7, 7], [3, 9]]
+
 const LAMP_CELLS := [[4, 1], [3, 3], [5, 5], [10, 5], [11, 7], [5, 9], [3, 12], [9, 3], [7, 1], [13, 7], [12, 5], [2, 11], [9, 1], [14, 1], [1, 3], [6, 3], [1, 5], [6, 5], [1, 7], [8, 7], [1, 9], [14, 9], [1, 11], [4, 11], [7, 11], [10, 11]]
 const WHISPER_CELLS := [[8, 3], [11, 5], [3, 7], [2, 9], [6, 11]]
 
+var level := 1
 var player: PlayerController = null
 var camera: Camera3D = null
 var ghost: GhostController = null
-
 var keys_total := 3
 var keys_found := 0
 var all_keys := []
@@ -46,6 +65,14 @@ var hint: Label = null
 var key_hint: Label = null
 var vignette: TextureRect = null
 var joystick: JoystickControl = null
+var stamina_bar: ProgressBar = null
+var minimap: Control = null
+var pause_overlay: CanvasLayer = null
+var scare_overlay: CanvasLayer = null
+var _vib_cooldown := 0.0
+var _minimap_t := 0.0
+
+signal restart_requested
 
 var ambient: AudioStreamPlayer
 var heartbeat: AudioStreamPlayer
@@ -70,10 +97,28 @@ func _ready():
 	ghost.danger_changed.connect(_on_danger)
 	ghost.caught.connect(_on_caught)
 
-	await get_tree().create_timer(8.0).timeout
+	var delay := 6.5 if level >= 2 else 8.0
+	await get_tree().create_timer(delay).timeout
+	if not running:
+		return
 	ghost.activate()
 	_play_once("res://audio/door_slam.wav", -8.0)
 	_play_once("res://audio/whisper.wav", -10.0)
+
+func _map() -> Array:
+	return MAP if level <= 1 else MAP2
+
+func _key_cells() -> Array:
+	return KEY_CELLS_L1 if level <= 1 else KEY_CELLS_L2
+
+func _exit_cell() -> Vector2i:
+	return Vector2i(10, 12) if level <= 1 else Vector2i(6, 12)
+
+func _spawn_cell() -> Vector2i:
+	return Vector2i(1, 1) if level <= 1 else Vector2i(15, 1)
+
+func _is_on_android() -> bool:
+	return DisplayServer.get_name() == "Android"
 
 func _get_mat(key: String, color: Color, emissive := Color(0, 0, 0, 1), e_energy := 1.0) -> StandardMaterial3D:
 	if not _mats.has(key):
@@ -98,6 +143,12 @@ uniform bool u_planks = false;
 uniform float u_bright : hint_range(0.0, 2.0) = 1.0;
 uniform float u_roughness : hint_range(0.0, 1.0) = 0.95;
 
+varying vec3 v_wp;
+
+void vertex() {
+	v_wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
+
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float vnoise(vec2 p) {
 	vec2 i = floor(p);
@@ -113,16 +164,16 @@ float vnoise(vec2 p) {
 void fragment() {
 	vec3 nrm = normalize(NORMAL);
 	vec2 uv;
-	if (abs(nrm.x) > abs(nrm.y) && abs(nrm.x) > abs(nrm.z)) uv = WORLD_POSITION.zy;
-	else if (abs(nrm.y) > abs(nrm.z)) uv = WORLD_POSITION.xz;
-	else uv = WORLD_POSITION.xy;
+	if (abs(nrm.x) > abs(nrm.y) && abs(nrm.x) > abs(nrm.z)) uv = v_wp.zy;
+	else if (abs(nrm.y) > abs(nrm.z)) uv = v_wp.xz;
+	else uv = v_wp.xy;
 
 	float grunge = vnoise(uv * 0.18);
 	float fine = vnoise(uv * 1.4);
 	vec3 col = u_tint.rgb;
 	col *= mix(0.84, 1.12, grunge);
 	col *= mix(0.95, 1.05, fine) * u_bright;
-	col *= 0.96 + 0.08 * hash(floor(WORLD_POSITION.xz * 3.0 + WORLD_POSITION.y * 13.0));
+	col *= 0.96 + 0.08 * hash(floor(v_wp.xz * 3.0 + v_wp.y * 13.0));
 
 	if (u_planks) {
 		float px = fract(uv.x * 2.4);
@@ -206,8 +257,8 @@ func _build_world():
 	var wall_i := 0
 	var open_cells: Array[Vector2i] = []
 
-	for row in range(MAP.size()):
-		var line: String = MAP[row]
+	for row in range(_map().size()):
+		var line: String = _map()[row]
 		for col in range(line.length()):
 			var ch: String = line[col]
 			if ch == '#':
@@ -247,7 +298,7 @@ func _build_ceiling():
 func _build_lamps():
 	for lam in LAMP_CELLS:
 		var cell := Vector2i(lam[0], lam[1])
-		if MAP[cell.y][cell.x] == '#':
+		if _map()[cell.y][cell.x] == '#':
 			continue
 		var light := OmniLight3D.new()
 		light.light_energy = 4.2
@@ -337,12 +388,12 @@ func _wall_push_dir(c: Vector2i, open_cells: Array[Vector2i]) -> Vector3:
 	return Vector3.ZERO
 
 func _is_special(c: Vector2i) -> bool:
-	if MAP[c.y][c.x] in ['P', 'K', 'E']:
+	if _map()[c.y][c.x] in ['P', 'K', 'E']:
 		return true
 	for l in LAMP_CELLS:
 		if Vector2i(l[0], l[1]) == c:
 			return true
-	for k in [[13, 3], [9, 7], [13, 9]]:
+	for k in _key_cells():
 		if Vector2i(k[0], k[1]) == c:
 			return true
 	return false
@@ -350,7 +401,7 @@ func _is_special(c: Vector2i) -> bool:
 func _is_adjacent_special(c: Vector2i) -> bool:
 	for off in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 		var n: Vector2i = c + off
-		if n.x >= 0 and n.y >= 0 and n.y < MAP.size() and n.x < MAP[n.y].length():
+		if n.x >= 0 and n.y >= 0 and n.y < _map().size() and n.x < _map()[n.y].length():
 			if _is_special(n):
 				return true
 	return false
@@ -370,9 +421,9 @@ func _cell_of(pos: Vector3) -> Vector2i:
 	return Vector2i(int(floor(pos.x / TILE)), int(floor(pos.z / TILE)))
 
 func _is_floor_cell(c: Vector2i) -> bool:
-	if c.y < 0 or c.y >= MAP.size() or c.x < 0 or c.x >= MAP[c.y].length():
+	if c.y < 0 or c.y >= _map().size() or c.x < 0 or c.x >= _map()[c.y].length():
 		return false
-	return MAP[c.y][c.x] != '#'
+	return _map()[c.y][c.x] != '#'
 
 func _nearest_floor(c: Vector2i) -> Vector2i:
 	if _is_floor_cell(c):
@@ -434,7 +485,7 @@ func random_floor_goal(near: Vector3, radius: float) -> Vector3:
 func _build_whispers():
 	for cell in WHISPER_CELLS:
 		var v := Vector2i(cell[0], cell[1])
-		if MAP[v.y][v.x] == '#':
+		if level >= 2 or _map()[v.y][v.x] == '#':
 			continue
 		var a := Area3D.new()
 		a.collision_mask = 4
@@ -499,7 +550,8 @@ func _build_player():
 	add_child(player)
 	player.collision_layer = 4
 	player.collision_mask = 1
-	player.global_position = Vector3(1.0 * TILE + 1.0, 0.2, 1.0 * TILE + 1.0)
+	var sp := _spawn_cell()
+	player.global_position = Vector3(sp.x * TILE + 1.0, 0.2, sp.y * TILE + 1.0)
 
 func _build_ghost():
 	ghost = GhostController.new()
@@ -507,69 +559,116 @@ func _build_ghost():
 	ghost.game = self
 	var gcs := CollisionShape3D.new()
 	var gs := SphereShape3D.new()
-	gs.radius = 0.55
+	gs.radius = 0.58
 	gcs.shape = gs
-	gcs.position.y = 1.3
+	gcs.position.y = 1.0
 	ghost.add_child(gcs)
 
-	var robe_mat := _get_mat("ghost_body", Color(0.62, 0.68, 0.9, 0.55), Color(0.4, 0.6, 1, 1), 1.2)
-	var skirt := MeshInstance3D.new()
-	var skm := CylinderMesh.new()
-	skm.top_radius = 0.1
-	skm.bottom_radius = 0.62
-	skm.height = 1.3
-	skm.radial_segments = 12
-	skirt.mesh = skm
-	skirt.material_override = robe_mat
-	skirt.position.y = 0.68
-	ghost.add_child(skirt)
-
+	var shroud_mat := _procedural_mat("pocong_cloth", Color(0.85, 0.83, 0.79), false, false)
 	var body := MeshInstance3D.new()
-	var bm := CapsuleMesh.new()
-	bm.radius = 0.33
-	bm.height = 0.9
+	var bm := CylinderMesh.new()
+	bm.top_radius = 0.33
+	bm.bottom_radius = 0.47
+	bm.height = 1.35
+	bm.radial_segments = 14
 	body.mesh = bm
-	body.material_override = robe_mat
-	body.position.y = 1.55
+	body.material_override = shroud_mat
+	body.position.y = 0.9
 	ghost.add_child(body)
 
+	var wrap := MeshInstance3D.new()
+	var wm := SphereMesh.new()
+	wm.radius = 0.4
+	wm.height = 0.8
+	wm.rings = 12
+	wm.radial_segments = 18
+	wrap.mesh = wm
+	wrap.material_override = shroud_mat
+	wrap.position.y = 1.72
+	ghost.add_child(wrap)
+
 	var face := MeshInstance3D.new()
-	var sm := SphereMesh.new()
-	sm.radius = 0.31
-	sm.height = 0.6
-	face.mesh = sm
-	var face_mat := _get_mat("ghost_face", Color(0.92, 0.96, 1, 1), Color(0.55, 0.8, 1, 1), 2.6)
+	var fm := SphereMesh.new()
+	fm.radius = 0.27
+	fm.height = 0.54
+	fm.rings = 16
+	fm.radial_segments = 22
+	face.mesh = fm
+	var face_mat := _get_mat("pocong_face", Color(0.85, 0.8, 0.75), Color(0.35, 0.45, 0.7, 1), 1.0)
 	face.material_override = face_mat
-	face.position.y = 2.15
+	face.position.y = 2.1
+	face.rotation.x = deg_to_rad(8)
 	ghost.add_child(face)
 	ghost.set_face(face)
 
-	var eye_mat := _get_mat("ghost_eye", Color(0, 0, 0, 1), Color(1, 0.05, 0.05, 1), 7.0)
+	var dark_mat := _get_mat("pocong_dark", Color(0.02, 0.01, 0.01, 1), Color(0, 0, 0, 1), 0.0)
+	var eye_mat := _get_mat("pocong_eye", Color(0, 0, 0, 1), Color(1, 0.02, 0.02, 1), 7.0)
 	for ex in [-0.12, 0.12]:
+		var sok := MeshInstance3D.new()
+		var sokm := SphereMesh.new()
+		sokm.radius = 0.085
+		sokm.height = 0.17
+		sok.mesh = sokm
+		sok.material_override = dark_mat
+		sok.position = Vector3(ex, 2.14, -0.21)
+		ghost.add_child(sok)
 		var eye := MeshInstance3D.new()
 		var es := SphereMesh.new()
-		es.radius = 0.045
-		es.height = 0.09
+		es.radius = 0.03
+		es.height = 0.06
 		eye.mesh = es
 		eye.material_override = eye_mat
-		eye.position = Vector3(ex, 2.18, -0.28)
+		eye.position = Vector3(ex, 2.16, -0.245)
 		ghost.add_child(eye)
 
+	var mouth := MeshInstance3D.new()
+	var mom := CylinderMesh.new()
+	mom.top_radius = 0.045
+	mom.bottom_radius = 0.045
+	mom.height = 0.3
+	mom.radial_segments = 10
+	mouth.mesh = mom
+	mouth.material_override = dark_mat
+	mouth.rotation.x = deg_to_rad(90)
+	mouth.position = Vector3(-0.015, 1.93, -0.225)
+	ghost.add_child(mouth)
+
+	var rope_mat := _get_mat("pocong_rope", Color(0.36, 0.27, 0.19), Color(0, 0, 0, 1), 0.0)
+	for ry in [0.55, 0.95, 1.42]:
+		var ring := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.5
+		cm.bottom_radius = 0.5
+		cm.height = 0.08
+		cm.radial_segments = 14
+		ring.mesh = cm
+		ring.material_override = rope_mat
+		ring.rotation.x = deg_to_rad(90)
+		ring.position.y = ry
+		ghost.add_child(ring)
+
 	var aura := OmniLight3D.new()
-	aura.light_energy = 1.5
-	aura.light_color = Color(1.0, 0.15, 0.12)
-	aura.omni_range = 4.5
-	aura.position.y = 2.1
+	aura.light_energy = 0.8
+	aura.light_color = Color(1.0, 0.1, 0.08)
+	aura.omni_range = 4.0
+	aura.position.y = 1.9
 	ghost.add_child(aura)
 
 	add_child(ghost)
 	ghost.target = player
-	ghost.home = Vector3(15.0 * TILE + 1.0, 1.4, 1.0 * TILE + 1.0)
+	if level >= 2:
+		ghost.home = Vector3(1.0 * TILE + 1.0, 1.4, 12.0 * TILE + 1.0)
+		ghost.patrol_speed = 2.1
+		ghost.chase_speed = 4.4
+		ghost.stalk_speed = 3.6
+		ghost.wander_radius = 12.0
+	else:
+		ghost.home = Vector3(15.0 * TILE + 1.0, 1.4, 1.0 * TILE + 1.0)
 	ghost.global_position = ghost.home
 	ghost.visible = true
 
 func _build_keys():
-	for cell in [[13, 3], [9, 7], [13, 9]]:
+	for cell in _key_cells():
 		var v := Vector2i(cell[0], cell[1])
 		var pos := Vector3(v.x * TILE + 1.0, 1.0, v.y * TILE + 1.0)
 		var key := KeyPickup.new()
@@ -594,7 +693,7 @@ func _build_keys():
 		key.add_child(kl)
 		var beam_mat := _get_mat("key_beam", Color(1.0, 0.9, 0.3, 0.6), Color(1.0, 0.8, 0.25, 1), 4.0)
 		beam_mat.transparency = StandardMaterial3D.TRANSPARENCY_ALPHA
-		beam_mat.unshaded = true
+		beam_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		var beam := MeshInstance3D.new()
 		var bm2 := CylinderMesh.new()
 		bm2.top_radius = 0.04
@@ -624,7 +723,7 @@ func _build_keys():
 		all_keys.append(key)
 
 func _build_exit():
-	var v := Vector2i(10, 12)
+	var v := _exit_cell()
 	var pos := Vector3(v.x * TILE + 1.0, 1.6, v.y * TILE + 1.0)
 	var door_mat := _get_mat("door", Color(0.28, 0.16, 0.1), Color(0.3, 0.05, 0.05, 1), 1.0)
 	_add_static_box(pos, Vector3(0.4, 3.2, 2.0), door_mat)
@@ -677,6 +776,7 @@ func collected_key():
 func _build_hud():
 	var layer := CanvasLayer.new()
 	layer.layer = 10
+	layer.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(layer)
 
 	var root := Control.new()
@@ -744,16 +844,28 @@ func _build_hud():
 	update_fl.call(true)
 
 	var quit_btn := Button.new()
-	quit_btn.text = "KELUAR"
-	quit_btn.add_theme_font_size_override("font_size", 20)
+	quit_btn.text = "II"
+	quit_btn.add_theme_font_size_override("font_size", 30)
 	quit_btn.custom_minimum_size = Vector2(110, 54)
 	quit_btn.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	quit_btn.offset_left = 12
 	quit_btn.offset_top = 12
 	quit_btn.offset_right = 122
 	quit_btn.offset_bottom = 66
-	quit_btn.pressed.connect(func(): exit_requested.emit())
+	quit_btn.pressed.connect(func():
+		if pause_overlay:
+			pause_overlay.toggle())
 	root.add_child(quit_btn)
+
+	var badge := Label.new()
+	badge.text = "LEVEL 2" if level >= 2 else "LEVEL 1"
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	badge.offset_left = 12
+	badge.offset_top = 78
+	badge.add_theme_font_size_override("font_size", 24)
+	badge.add_theme_color_override("font_color", Color(0.75, 0.7, 0.85))
+	root.add_child(badge)
 
 	key_hint = Label.new()
 	key_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -791,6 +903,55 @@ func _build_hud():
 	root.add_child(joystick)
 	player.joystick = joystick
 
+	stamina_bar = ProgressBar.new()
+	stamina_bar.max_value = 100.0
+	stamina_bar.value = 100.0
+	stamina_bar.show_percentage = false
+	stamina_bar.custom_minimum_size = Vector2(420, 22)
+	stamina_bar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	stamina_bar.anchor_left = 0.5
+	stamina_bar.anchor_right = 0.5
+	stamina_bar.offset_left = -210
+	stamina_bar.offset_right = 210
+	stamina_bar.offset_top = -300
+	stamina_bar.offset_bottom = -278
+	stamina_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stamina_bar.add_theme_stylebox_override("background", _bar_style(Color(0.06, 0.05, 0.07, 0.85)))
+	stamina_bar.add_theme_stylebox_override("fill", _bar_style(Color(0.12, 0.55, 0.3, 1)))
+	root.add_child(stamina_bar)
+	player.stamina_changed.connect(func(v: float): stamina_bar.value = v)
+	var on_stamina_low := func(low: bool):
+		stamina_bar.modulate = Color(1, 0.4, 0.35) if low else Color(1, 1, 1)
+	player.stamina_low_changed.connect(on_stamina_low)
+
+	minimap = Minimap.new()
+	minimap.game = self
+	minimap.custom_minimum_size = Vector2(190, 148)
+	minimap.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	minimap.anchor_left = 1.0
+	minimap.anchor_right = 1.0
+	minimap.offset_left = -202
+	minimap.offset_right = -12
+	minimap.offset_top = 12
+	minimap.offset_bottom = 160
+	minimap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(minimap)
+
+	pause_overlay = PauseOverlay.new()
+	pause_overlay.host = self
+	add_child(pause_overlay)
+	pause_overlay.restart_requested.connect(func(): restart_requested.emit())
+	pause_overlay.exit_requested.connect(func(): exit_requested.emit())
+
+func _bar_style(c: Color) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = c
+	s.corner_radius_top_left = 6
+	s.corner_radius_top_right = 6
+	s.corner_radius_bottom_left = 6
+	s.corner_radius_bottom_right = 6
+	return s
+
 func _setup_audio():
 	ambient = _loop_player("res://audio/ambient_drone.wav", -13.0)
 	heartbeat = _loop_player("res://audio/heartbeat.wav", -30.0)
@@ -819,6 +980,10 @@ func _play_once(path: String, vol := -6.0, pitch := 1.0):
 func _process(delta: float):
 	if not running:
 		return
+	_minimap_t -= delta
+	if minimap and _minimap_t <= 0.0:
+		_minimap_t = 0.12
+		minimap.queue_redraw()
 	if player and is_instance_valid(player):
 		if player.is_on_floor():
 			_step_timer -= delta * (2.0 if _moving() else 0.0)
@@ -878,50 +1043,47 @@ func _on_danger(level: float):
 		whisper.volume_db = lerp(whisper.volume_db, -26.0 + d * 10.0, 0.1)
 	else:
 		whisper.volume_db = lerp(whisper.volume_db, -80.0, 0.1)
+	if _is_on_android() and d > 0.65:
+		_vib_cooldown -= get_process_delta_time()
+		if _vib_cooldown <= 0.0:
+			_vib_cooldown = 0.85
+			Input.vibrate_handheld(int(25 + d * 40))
 
 func _on_caught():
 	if not running:
 		return
 	running = false
 	player.set_control(false)
+	if _is_on_android():
+		Input.vibrate_handheld(700)
 	_play_once("res://audio/jumpscare.wav", -2.0)
 	_build_jumpscare()
-	await get_tree().create_timer(1.6).timeout
+	if camera:
+		var tw := create_tween()
+		tw.tween_property(camera, "rotation:z", 0.12, 0.04).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(camera, "rotation:z", -0.12, 0.05)
+		tw.tween_property(camera, "rotation:z", 0.0, 0.05)
+		tw.set_loops(5)
+	await get_tree().create_timer(1.7).timeout
+	if camera:
+		camera.rotation.z = 0.0
 	ended.emit(false)
 
 func _build_jumpscare():
 	if jumped:
 		return
 	jumped = true
-	var root := Node3D.new()
-	if camera:
-		root.global_transform = camera.global_transform
-		root.global_position = camera.global_position - root.global_transform.basis.z * 1.4
-	add_child(root)
-	var mat := _get_mat("jump", Color(0.93, 0.97, 1, 1), Color(0.55, 0.75, 1, 1), 4.0)
-	var mi := MeshInstance3D.new()
-	var sm := SphereMesh.new()
-	sm.radius = 0.7
-	sm.height = 1.4
-	mi.mesh = sm
-	mi.material_override = mat
-	root.add_child(mi)
-	for ex in [-0.22, 0.22]:
-		var mk := MeshInstance3D.new()
-		var ek := SphereMesh.new()
-		ek.radius = 0.09
-		ek.height = 0.18
-		mk.mesh = ek
-		mk.material_override = _get_mat("jump_eye", Color(0, 0, 0, 1), Color(1, 0.05, 0.05, 1), 6.0)
-		mk.position = Vector3(ex, 0.12, -0.4)
-		root.add_child(mk)
-	root.scale = Vector3.ONE * 0.02
-	var tw := create_tween()
-	tw.tween_property(root, "scale", Vector3.ONE * 1.15, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw.tween_interval(0.6)
-	tw.tween_property(root, "scale", Vector3.ONE * 1.4, 0.4)
-	await get_tree().create_timer(1.8).timeout
-	root.queue_free()
+	scare_overlay = CanvasLayer.new()
+	scare_overlay.layer = 40
+	scare_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(scare_overlay)
+	var scare := PocongScare.new()
+	scare.set_anchors_preset(Control.PRESET_FULL_RECT)
+	scare_overlay.add_child(scare)
+	await get_tree().create_timer(1.7).timeout
+	if scare_overlay and is_instance_valid(scare_overlay):
+		scare_overlay.queue_free()
+		scare_overlay = null
 
 func _win():
 	if not running:
@@ -931,12 +1093,6 @@ func _win():
 	_play_once("res://audio/win.wav", -4.0)
 	await get_tree().create_timer(1.2).timeout
 	ended.emit(true)
-
-func _unhandled_input(event: InputEvent):
-	if event.is_action_pressed("ui_cancel"):
-		if running:
-			exit_requested.emit()
-			get_viewport().set_input_as_handled()
 
 class Lamp extends Node:
 	var light: OmniLight3D
@@ -968,3 +1124,99 @@ class KeyPickup extends Area3D:
 		t += delta
 		rotation.y += delta * 2.0
 		position.y = 1.0 + sin(t * 2.0) * 0.15
+
+class Minimap extends Control:
+	var game: GameScreen
+	func _draw():
+		if not game:
+			return
+		var w := size.x
+		var h := size.y
+		var map: Array = game._map()
+		var cw := w / 17.0
+		var ch := h / 13.0
+		draw_rect(Rect2(0, 0, w, h), Color(0, 0, 0, 0.55))
+		var wall_c := Color(0.16, 0.15, 0.17, 0.95)
+		var floor_c := Color(0.3, 0.27, 0.32, 0.85)
+		for y in range(map.size()):
+			for x in range(map[y].length()):
+				var r := Rect2(x * cw, y * ch, cw, ch)
+				if map[y][x] == '#':
+					draw_rect(r, wall_c)
+				else:
+					draw_rect(r, floor_c)
+		var exit_c := Vector2i(game._exit_cell())
+		draw_rect(Rect2(exit_c.x * cw, exit_c.y * ch, cw, ch), Color(0.2, 0.9, 0.35))
+		for k in game.all_keys:
+			if is_instance_valid(k):
+				var kp: Vector2 = Vector2(k.position.x, k.position.z) / 2.0
+				var cc := Vector2(kp.x - 1.0, kp.y - 1.0)
+				draw_rect(Rect2(cc.x * cw + cw * 0.2, cc.y * ch + ch * 0.2, cw * 0.6, ch * 0.6), Color(1, 0.85, 0.3))
+		if game.player and is_instance_valid(game.player):
+			var pp: Vector2 = Vector2(game.player.global_position.x, game.player.global_position.z) / 2.0 - Vector2.ONE
+			var pc := Vector2(pp.x * cw + cw * 0.5, pp.y * ch + ch * 0.5)
+			draw_circle(pc, 3.2, Color(1, 1, 1))
+		if game.ghost and is_instance_valid(game.ghost):
+			var gp: Vector2 = Vector2(game.ghost.global_position.x, game.ghost.global_position.z) / 2.0 - Vector2.ONE
+			var gc := Vector2(gp.x * cw + cw * 0.5, gp.y * ch + ch * 0.5)
+			draw_circle(gc, 3.6, Color(1, 0.15, 0.1))
+		draw_rect(Rect2(0, 0, w, h), Color(1, 0.2, 0.2, 0.7), false, 1.5)
+
+class PocongScare extends Control:
+	var _t := 0.0
+	var _seed := 0.0
+	func _ready():
+		_seed = randf() * TAU
+		modulate.a = 0.0
+		var tw := create_tween()
+		tw.tween_property(self, "modulate:a", 1.0, 0.08)
+	func _process(delta: float):
+		_t += delta
+		var shake := maxf(18.0 - _t * 10.0, 0.0)
+		position = Vector2(
+			sin((_t * 60.0 + _seed) * 1.0) * shake * 0.35,
+			cos((_t * 55.0 + _seed) * 1.0) * shake * 0.35
+		)
+		if _t > 1.4:
+			modulate.a = maxf(modulate.a - delta * 2.2, 0.0)
+		queue_redraw()
+	func _draw():
+		var w := size.x
+		var h := size.y
+		draw_rect(Rect2(0, 0, w, h), Color(0, 0, 0, 1))
+		var cx := w * 0.5
+		var cy := h * 0.52
+		var rx := w * 0.24
+		var ry := h * 0.36
+		draw_circle(Vector2(cx, cy), rx * 1.15, Color(0.5, 0.03, 0.03, 0.55))
+		draw_circle(Vector2(cx - rx * 0.4, cy + ry * 0.2), rx * 0.5, Color(0.35, 0.1, 0.1, 0.4))
+		draw_circle(Vector2(cx + rx * 0.4, cy + ry * 0.2), rx * 0.5, Color(0.35, 0.1, 0.1, 0.4))
+		var face: PackedVector2Array = _ellipse(cx, cy, rx, ry, 40)
+		draw_colored_polygon(face, Color(0.9, 0.86, 0.82))
+		draw_polyline(face, Color(0.5, 0.45, 0.42), 2.0)
+		var tex: PackedVector2Array = _ellipse(cx - rx * 0.1, cy + ry * 0.05, rx * 0.9, ry * 0.7, 40)
+		draw_colored_polygon(tex, Color(0.82, 0.76, 0.72))
+		var eye_c := Color(0.04, 0.02, 0.02)
+		for i2 in range(2):
+			var sx: float = 0.38 if i2 == 1 else -0.38
+			var ex := cx + rx * sx
+			var ey := cy - ry * 0.08
+			draw_colored_polygon(_ellipse(ex - rx * 0.02, ey, rx * 0.26, ry * 0.3, 26), eye_c)
+			var gl := 0.5 + 0.5 * sin(_t * 40.0)
+			var glow := Color(1, 0.1, 0.08, 0.6 + gl * 0.4)
+			draw_circle(Vector2(ex - rx * 0.03, ey + ry * 0.02), rx * 0.07, glow)
+			draw_circle(Vector2(ex - rx * 0.03, ey + ry * 0.02), rx * 0.045, Color(1, 0.5, 0.2))
+		var mouth_pts: PackedVector2Array = _ellipse(cx + rx * 0.04, cy + ry * 0.42, rx * 0.28, ry * 0.16, 26)
+		draw_colored_polygon(mouth_pts, Color(0.03, 0.01, 0.01))
+		draw_line(Vector2(cx - rx * 0.25, cy + ry * 0.5), Vector2(cx + rx * 0.3, cy + ry * 0.52), Color(0.4, 0.33, 0.3), 3.0)
+		draw_line(Vector2(cx - rx * 0.72, cy - ry * 0.72), Vector2(cx + rx * 0.72, cy - ry * 0.72), Color(0.9, 0.85, 0.8), 10.0)
+		draw_colored_polygon(_ellipse(cx, cy - ry * 0.78, rx * 0.5, ry * 0.1, 24), Color(0.85, 0.8, 0.76))
+		for i in range(4):
+			var tx := cx - rx * 0.5 + rx * 0.3 * i
+			draw_line(Vector2(tx, cy - ry * 0.66), Vector2(tx - rx * 0.08, cy - ry * 0.9), Color(0.35, 0.28, 0.24), 3.0)
+	func _ellipse(cenx: float, ceny: float, rx: float, ry: float, n: int) -> PackedVector2Array:
+		var pts := PackedVector2Array()
+		for i in range(n + 1):
+			var a := TAU * float(i) / float(n)
+			pts.append(Vector2(cenx + cos(a) * rx, ceny + sin(a) * ry))
+		return pts

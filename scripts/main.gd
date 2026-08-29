@@ -2,6 +2,7 @@ extends Node
 
 var screen: Node = null
 var music: AudioStreamPlayer = null
+var _level := 1
 
 func _ready():
 	_setup_music()
@@ -9,6 +10,7 @@ func _ready():
 
 func _setup_music():
 	music = AudioStreamPlayer.new()
+	music.process_mode = Node.PROCESS_MODE_ALWAYS
 	var stream: AudioStream = null
 	for cand in ["res://audio/bersenja_gurau.mp3", "res://audio/bersenja_gurau.ogg", "res://audio/bersenja_gurau.wav"]:
 		if ResourceLoader.exists(cand):
@@ -34,21 +36,26 @@ func _clear():
 	if screen:
 		screen.queue_free()
 		screen = null
+	get_tree().paused = false
 
 func _show_menu():
 	_clear()
 	var m: MenuScreen = MenuScreen.new()
 	add_child(m)
 	screen = m
-	m.started.connect(_start_game)
+	m.started.connect(func(lv: int):
+		_level = lv
+		_start_game())
 
 func _start_game():
 	_clear()
 	var g: GameScreen = GameScreen.new()
+	g.level = _level
 	add_child(g)
 	screen = g
 	g.ended.connect(_on_game_ended)
 	g.exit_requested.connect(_show_menu)
+	g.restart_requested.connect(_start_game)
 
 func _on_game_ended(is_win: bool):
 	_clear()

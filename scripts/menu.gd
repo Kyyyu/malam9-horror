@@ -1,7 +1,7 @@
 extends Control
 class_name MenuScreen
 
-signal started
+signal started(level: int)
 
 func _ready():
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -46,15 +46,26 @@ func _ready():
 	vbox.add_child(spacer)
 
 	var start := Button.new()
-	start.text = "MULAI"
+	start.text = "LEVEL 1"
 	start.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	start.custom_minimum_size = Vector2(320, 96)
-	start.add_theme_font_size_override("font_size", 44)
-	start.pressed.connect(func(): started.emit())
+	start.custom_minimum_size = Vector2(360, 88)
+	start.add_theme_font_size_override("font_size", 40)
+	start.pressed.connect(func(): started.emit(1))
 	start.add_theme_stylebox_override("normal", _style(Color(0.55, 0.12, 0.2, 0.9)))
 	start.add_theme_stylebox_override("hover", _style(Color(0.7, 0.16, 0.25, 0.95)))
 	start.add_theme_stylebox_override("pressed", _style(Color(0.35, 0.08, 0.14, 1)))
 	vbox.add_child(start)
+
+	var start2 := Button.new()
+	start2.text = "LEVEL 2"
+	start2.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	start2.custom_minimum_size = Vector2(360, 88)
+	start2.add_theme_font_size_override("font_size", 40)
+	start2.pressed.connect(func(): started.emit(2))
+	start2.add_theme_stylebox_override("normal", _style(Color(0.4, 0.14, 0.3, 0.9)))
+	start2.add_theme_stylebox_override("hover", _style(Color(0.55, 0.2, 0.4, 0.95)))
+	start2.add_theme_stylebox_override("pressed", _style(Color(0.25, 0.08, 0.2, 1)))
+	vbox.add_child(start2)
 
 	var hint := Label.new()
 	hint.text = "Temukan 3 kunci lalu kabur sebelum HANTU menangkapmu..."
@@ -67,9 +78,9 @@ func _ready():
 	vbox.add_child(hint)
 
 	var ctrl := Label.new()
-	ctrl.text = "- Gerak: drag kiri / WASD\n- Lihat: drag kanan / gerak mouse\n- Senter: tombol kanan bawah / F"
+	ctrl.text = "- Gerak: drag kiri / WASD / stik kiri\n- Lihat: drag kanan / mouse / stik kanan\n- Lari: joystick full / Shift / tombol A\n- Senter: tombol kanan bawah / F / tombol X"
 	ctrl.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	ctrl.custom_minimum_size = Vector2(520, 0)
+	ctrl.custom_minimum_size = Vector2(540, 0)
 	ctrl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ctrl.add_theme_font_size_override("font_size", 22)
 	ctrl.add_theme_color_override("font_color", Color(0.45, 0.42, 0.5))
