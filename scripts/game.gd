@@ -51,6 +51,8 @@ var level := 1
 var player: PlayerController = null
 var camera: Camera3D = null
 var ghost: GhostController = null
+var ghost_name := "HANTU"
+var music: AudioStreamPlayer = null
 var keys_total := 3
 var keys_found := 0
 var all_keys := []
@@ -69,6 +71,7 @@ var stamina_bar: ProgressBar = null
 var minimap: Control = null
 var pause_overlay: CanvasLayer = null
 var scare_overlay: CanvasLayer = null
+var ghost_label: Label = null
 var _vib_cooldown := 0.0
 var _minimap_t := 0.0
 
@@ -554,6 +557,14 @@ func _build_player():
 	player.global_position = Vector3(sp.x * TILE + 1.0, 0.2, sp.y * TILE + 1.0)
 
 func _build_ghost():
+	ghost_name = "GUFRON" if level >= 2 else "BAHLIL"
+	var pal := {
+		"cloth": Color(0.85, 0.83, 0.79) if level <= 1 else Color(0.2, 0.18, 0.22),
+		"face": Color(0.85, 0.8, 0.75) if level <= 1 else Color(0.58, 0.48, 0.5),
+		"emission": Color(0.35, 0.45, 0.7, 1) if level <= 1 else Color(0.95, 0.25, 0.1, 1.6),
+		"eye": Color(1, 0.02, 0.02) if level <= 1 else Color(1, 0.5, 0.1),
+		"aura": Color(1.0, 0.1, 0.08) if level <= 1 else Color(0.55, 0.1, 1.0),
+	}
 	ghost = GhostController.new()
 	ghost.name = "Ghost"
 	ghost.game = self
@@ -564,7 +575,7 @@ func _build_ghost():
 	gcs.position.y = 1.0
 	ghost.add_child(gcs)
 
-	var shroud_mat := _procedural_mat("pocong_cloth", Color(0.85, 0.83, 0.79), false, false)
+	var shroud_mat := _procedural_mat("pocong_cloth", pal["cloth"], false, false)
 	var body := MeshInstance3D.new()
 	var bm := CylinderMesh.new()
 	bm.top_radius = 0.33
@@ -594,7 +605,7 @@ func _build_ghost():
 	fm.rings = 16
 	fm.radial_segments = 22
 	face.mesh = fm
-	var face_mat := _get_mat("pocong_face", Color(0.85, 0.8, 0.75), Color(0.35, 0.45, 0.7, 1), 1.0)
+	var face_mat := _get_mat("pocong_face", pal["face"], pal["emission"], 1.0)
 	face.material_override = face_mat
 	face.position.y = 2.1
 	face.rotation.x = deg_to_rad(8)
@@ -602,7 +613,7 @@ func _build_ghost():
 	ghost.set_face(face)
 
 	var dark_mat := _get_mat("pocong_dark", Color(0.02, 0.01, 0.01, 1), Color(0, 0, 0, 1), 0.0)
-	var eye_mat := _get_mat("pocong_eye", Color(0, 0, 0, 1), Color(1, 0.02, 0.02, 1), 7.0)
+	var eye_mat := _get_mat("pocong_eye", Color(0, 0, 0, 1), pal["eye"], 7.0)
 	for ex in [-0.12, 0.12]:
 		var sok := MeshInstance3D.new()
 		var sokm := SphereMesh.new()
@@ -649,7 +660,7 @@ func _build_ghost():
 
 	var aura := OmniLight3D.new()
 	aura.light_energy = 0.8
-	aura.light_color = Color(1.0, 0.1, 0.08)
+	aura.light_color = pal["aura"]
 	aura.omni_range = 4.0
 	aura.position.y = 1.9
 	ghost.add_child(aura)
@@ -867,6 +878,19 @@ func _build_hud():
 	badge.add_theme_color_override("font_color", Color(0.75, 0.7, 0.85))
 	root.add_child(badge)
 
+	ghost_label = Label.new()
+	ghost_label.text = "HANTU: %s" % ghost_name
+	ghost_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ghost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ghost_label.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	ghost_label.offset_top = 150
+	ghost_label.add_theme_font_size_override("font_size", 26)
+	ghost_label.add_theme_color_override("font_color", Color(0.85, 0.2, 0.18))
+	ghost_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+	ghost_label.add_theme_constant_override("shadow_offset_y", 2)
+	ghost_label.modulate.a = 0.75
+	root.add_child(ghost_label)
+
 	key_hint = Label.new()
 	key_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	key_hint.set_anchors_preset(Control.PRESET_CENTER_TOP)
@@ -991,8 +1015,13 @@ func _process(delta: float):
 				_step_timer = 0.4
 				_play_once("res://audio/footstep.wav", -16.0, randf_range(0.85, 1.15))
 	if is_instance_valid(ghost) and is_instance_valid(player):
-		if ghost.global_position.distance_to(player.global_position) < 4.0:
+		var gd := ghost.global_position.distance_to(player.global_position)
+		if gd < 4.0:
 			_shake_camera()
+		if ghost_label:
+			var near := clampf(1.0 - gd / 9.0, 0.0, 1.0)
+			ghost_label.modulate.a = 0.3 + near * 0.7
+			ghost_label.add_theme_color_override("font_color", Color(0.85, 0.2, 0.18).lerp(Color(1.0, 0.05, 0.05), near))
 	_check_key_hint(delta)
 
 func _check_key_hint(delta: float):
@@ -1056,6 +1085,12 @@ func _on_caught():
 	player.set_control(false)
 	if _is_on_android():
 		Input.vibrate_handheld(700)
+	if music:
+		var m: AudioStreamPlayer = music
+		m.volume_db = -26.0
+		await get_tree().create_timer(1.8).timeout
+		if is_instance_valid(m):
+			m.volume_db = -8.0
 	_play_once("res://audio/jumpscare.wav", -2.0)
 	_build_jumpscare()
 	if camera:
@@ -1078,6 +1113,8 @@ func _build_jumpscare():
 	scare_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(scare_overlay)
 	var scare := PocongScare.new()
+	scare.game = self
+	scare.name = "Jumpscare"
 	scare.set_anchors_preset(Control.PRESET_FULL_RECT)
 	scare_overlay.add_child(scare)
 	await get_tree().create_timer(1.7).timeout
@@ -1163,27 +1200,38 @@ class Minimap extends Control:
 		draw_rect(Rect2(0, 0, w, h), Color(1, 0.2, 0.2, 0.7), false, 1.5)
 
 class PocongScare extends Control:
+	var game: GameScreen
 	var _t := 0.0
 	var _seed := 0.0
 	func _ready():
 		_seed = randf() * TAU
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		position = Vector2.ZERO
+		size = get_viewport_rect().size
 		modulate.a = 0.0
 		var tw := create_tween()
 		tw.tween_property(self, "modulate:a", 1.0, 0.08)
 	func _process(delta: float):
 		_t += delta
-		var shake := maxf(18.0 - _t * 10.0, 0.0)
-		position = Vector2(
-			sin((_t * 60.0 + _seed) * 1.0) * shake * 0.35,
-			cos((_t * 55.0 + _seed) * 1.0) * shake * 0.35
-		)
+		var vs := get_viewport_rect().size
+		if position != Vector2.ZERO or size != vs:
+			position = Vector2.ZERO
+			size = vs
 		if _t > 1.4:
 			modulate.a = maxf(modulate.a - delta * 2.2, 0.0)
 		queue_redraw()
 	func _draw():
 		var w := size.x
 		var h := size.y
+		if w <= 0.0 or h <= 0.0:
+			return
+		var shake := maxf(18.0 - _t * 10.0, 0.0)
+		var off := Vector2(
+			sin((_t * 60.0 + _seed) * 1.0) * shake * 0.35,
+			cos((_t * 55.0 + _seed) * 1.0) * shake * 0.35
+		)
 		draw_rect(Rect2(0, 0, w, h), Color(0, 0, 0, 1))
+		draw_set_transform(off, 0.0, Vector2.ONE)
 		var cx := w * 0.5
 		var cy := h * 0.52
 		var rx := w * 0.24
@@ -1214,6 +1262,9 @@ class PocongScare extends Control:
 		for i in range(4):
 			var tx := cx - rx * 0.5 + rx * 0.3 * i
 			draw_line(Vector2(tx, cy - ry * 0.66), Vector2(tx - rx * 0.08, cy - ry * 0.9), Color(0.35, 0.28, 0.24), 3.0)
+		if game and game.ghost_name != "":
+			var name_c := Color(1, 0.28, 0.22)
+			draw_string(ThemeDB.fallback_font, Vector2(cx - rx * 0.85, cy - ry * 1.05), game.ghost_name, HORIZONTAL_ALIGNMENT_CENTER, rx * 1.7, int(w * 0.075), name_c)
 	func _ellipse(cenx: float, ceny: float, rx: float, ry: float, n: int) -> PackedVector2Array:
 		var pts := PackedVector2Array()
 		for i in range(n + 1):

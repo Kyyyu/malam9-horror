@@ -51,6 +51,7 @@ func _start_game():
 	_clear()
 	var g: GameScreen = GameScreen.new()
 	g.level = _level
+	g.music = music
 	add_child(g)
 	screen = g
 	g.ended.connect(_on_game_ended)
